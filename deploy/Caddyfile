@@ -20,14 +20,12 @@
 	}
 
 	# Show audio pushed by the FPP plugin via the ingest service (LAN-only),
-	# served to phones straight from disk.
+	# served to phones straight from disk. Immutable per show — cache hard.
 	handle /media/* {
-		root * /srv/media
+		root * /media
 		uri strip_prefix /media
-		file_server {
-			# Audio files are immutable per show — safe to cache hard
-			header Cache-Control "public, max-age=3600, immutable"
-		}
+		header Cache-Control "public, max-age=3600, immutable"
+		file_server
 	}
 
 	# Everything else → the Vite SPA

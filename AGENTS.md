@@ -57,6 +57,15 @@ timeout). Harmless — room state is in-memory anyway; nothing lives in S3.
 A room idle >60s is still deleted from memory (the S3 delete inside cleanup
 fails but the room is removed regardless).
 
+Room→source bindings are in-memory only: a server/container restart forgets
+registered tracks even though the files persist in media/. The plugin must
+re-run push (or at least upload/complete) after any restart — cheap since
+the files are already on disk.
+
+/upload/complete is intentionally NOT proxied by Caddy — it's unauthenticated,
+so it must stay LAN-only. The plugin talks to beatsync:8080 directly for both
+admin WS and HTTP; only browsers go through Caddy (ws://host/ws).
+
 ## Hard-won protocol facts (verified against server source @ 94c38ab)
 
 - No HTTP play endpoint — playback control is WS-only. Rooms auto-create on
