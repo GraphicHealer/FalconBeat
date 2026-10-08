@@ -13,6 +13,7 @@ import {
   configFromEnv,
   connect,
   fetchPlaybackState,
+  pushAudio,
   resolveSource,
   sendCommand,
   uploadAudio,
@@ -30,27 +31,40 @@ const usage = () => {
   console.log(`Usage: node src/cli.ts <command>
 
 Commands:
-  upload <file.mp3>                 Push audio into the room (non-demo mode;
-                                    prints the source URL to pass to play)
-  play <file.mp3|url> [--pos sec]   Synced play — demo filename or upload URL
+  push <file.mp3>                   Send audio via ingest + register with room
+                                    (no S3; prints the URL to pass to play)
+  upload <file.mp3>                 S3 presigned-upload flow (needs S3_* on server)
+  play <file.mp3|url> [--pos sec]   Synced play — demo filename or pushed URL
   pause [--pos seconds]             Synced pause (defaults to live position)
   status                            Show room playback state via /discover
   watch                             Stay connected, log every server message
 
-Env:  BEATSYNC_URL   (default ws://localhost:8080)
-      ADMIN_SECRET   demo mode: ?admin= gate
-      CREATOR_SECRET non-demo: ?creator= → guaranteed admin
-      ROOM_ID        (default 000000)`);
+Env:  BEATSYNC_URL    (default ws://localhost:8080)
+      CREATOR_SECRET  non-demo admin: ?creator= (guaranteed admin)
+      INGEST_URL      (default http://localhost:8090)
+      INGEST_TOKEN    bearer token for ingest PUTs
+      MEDIA_PUBLIC_URL public base for phone fetches (default http://localhost:8090/media)
+      ADMIN_SECRET    demo mode only: ?admin= gate
+      ROOM_ID         (default 000000)`);
   process.exit(cmd === "help" || cmd === "--help" ? 0 : 1);
 };
 
 if (!cmd) usage();
 
 switch (cmd) {
+  case "push": {
+    const file = args[0];
+    if (!file) usage();
+    console.log(`Pushing ${file} → ${cfg.ingestUrl}, room ${cfg.roomId}`);
+    const publicUrl = await pushAudio(cfg, file);
+    console.log(`✓ pushed + registered; source URL:\n  ${publicUrl}`);
+    break;
+  }
+
   case "upload": {
     const file = args[0];
     if (!file) usage();
-    console.log(`Uploading ${file} → ${cfg.host} room ${cfg.roomId}`);
+    console.log(`Uploading ${file} via S3 presign → ${cfg.host} room ${cfg.roomId}`);
     const publicUrl = await uploadAudio(cfg, file);
     console.log(`✓ uploaded; source URL:\n  ${publicUrl}`);
     break;

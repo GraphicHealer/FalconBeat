@@ -6,6 +6,7 @@ dist/
 *.local
 
 # Show audio is staged here but never committed (copyrighted material)
-audio/*
-!audio/.gitkeep
+media/*
+!media/.gitkeep
 test/s3-data/
+bridge/test/s3-data/

@@ -1,0 +1,101 @@
+/**
+ * FalconBeat ingest — LAN-only audio receiver + static media server.
+ *
+ *   PUT  /media/<filename>   Authorization: Bearer $INGEST_TOKEN → store to MEDIA_DIR
+ *   GET  /media/<filename>   serve file (dev convenience; prod GETs go through Caddy)
+ *   GET  /health
+ *
+ * The plugin then registers the file with BeatSync via POST /upload/complete
+ * {roomId, originalName, publicUrl} where publicUrl = MEDIA_PUBLIC_URL/media/<name>.
+ * BeatSync stores the URL and broadcasts it — it never touches the bytes.
+ *
+ * Env: PORT=8090  MEDIA_DIR=./media  INGEST_TOKEN=...
+ * Run: node server.ts   (Node ≥22.18, zero deps)
+ */
+import { createServer } from "node:http";
+import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
+import { basename, extname, join, resolve } from "node:path";
+
+const PORT = Number(process.env.PORT ?? 8090);
+const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? "./media");
+const TOKEN = process.env.INGEST_TOKEN ?? "";
+
+const AUDIO_EXT = new Set([".mp3", ".wav", ".flac", ".ogg", ".m4a"]);
+const MIME: Record<string, string> = {
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".flac": "audio/flac",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+};
+
+const json = (res: import("node:http").ServerResponse, code: number, body: unknown) =>
+  res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+
+/** Strip to basename + safe charset; reject non-audio extensions. */
+const safeName = (raw: string): string | null => {
+  const name = basename(decodeURIComponent(raw)).replace(/[^\w.() \-']/g, "_");
+  return AUDIO_EXT.has(extname(name).toLowerCase()) ? name : null;
+};
+
+createServer(async (req, res) => {
+  const url = new URL(req.url ?? "/", "http://x");
+  const fileName = url.pathname.startsWith("/media/") ? url.pathname.slice("/media/".length) : null;
+
+  try {
+    if (req.method === "GET" && url.pathname === "/health") {
+      return json(res, 200, { status: "ok" });
+    }
+
+    if (req.method === "GET" && url.pathname === "/media") {
+      const files = (await readdir(MEDIA_DIR)).filter((f) => AUDIO_EXT.has(extname(f).toLowerCase()));
+      return json(res, 200, { files });
+    }
+
+    if (req.method === "PUT" && fileName) {
+      if (!TOKEN || req.headers.authorization !== `Bearer ${TOKEN}`) {
+        return json(res, 401, { error: "unauthorized" });
+      }
+      const safe = safeName(fileName);
+      if (!safe) return json(res, 400, { error: "unsupported audio filename" });
+
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      await mkdir(MEDIA_DIR, { recursive: true });
+      const bytes = Buffer.concat(chunks);
+      await writeFile(join(MEDIA_DIR, safe), bytes);
+      console.log(`PUT /media/${safe} (${bytes.length}B)`);
+      return json(res, 200, { stored: safe, bytes: bytes.length });
+    }
+
+    if ((req.method === "GET" || req.method === "HEAD") && fileName) {
+      const safe = safeName(fileName);
+      if (!safe) return json(res, 404, { error: "not found" });
+      const file = join(MEDIA_DIR, safe);
+      if (req.method === "HEAD") {
+        const s = await stat(file);
+        return res
+          .writeHead(200, {
+            "Content-Type": MIME[extname(safe).toLowerCase()],
+            "Content-Length": s.size,
+            "Cache-Control": "public, max-age=3600, immutable",
+          })
+          .end();
+      }
+      const data = await readFile(file);
+      res
+        .writeHead(200, {
+          "Content-Type": MIME[extname(safe).toLowerCase()],
+          "Content-Length": data.length,
+          "Cache-Control": "public, max-age=3600, immutable",
+        })
+        .end(data);
+      return;
+    }
+
+    json(res, 404, { error: "not found" });
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
+    json(res, code, { error: String(e) });
+  }
+}).listen(PORT, () => console.log(`ingest on :${PORT} → ${MEDIA_DIR}`));

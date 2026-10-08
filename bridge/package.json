@@ -8,6 +8,7 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "push": "node src/cli.ts push",
     "play": "node src/cli.ts play",
     "pause": "node src/cli.ts pause",
     "status": "node src/cli.ts status",

@@ -8,25 +8,47 @@ Falcon Player (FPP). Built on a self-hosted, **unmodified** BeatSync server
 ## Architecture
 
 - `beatsync/` — upstream clone pinned by commit SHA (no tags exist upstream).
-  Runs in **normal (non-demo) mode** so the FPP plugin can push audio at runtime:
-  `POST /upload/get-presigned-url` → PUT to S3 → `POST /upload/complete`
-  (adds source to room + broadcasts SET_AUDIO_SOURCES; phones preload).
-  S3-compatible store required — Cloudflare R2 recommended (free tier, no
-  egress fees). Admin auth: `?creator=$CREATOR_SECRET` on the WS URL.
-  Demo mode (`DEMO=1`, local audio dir, no S3) remains a fallback for a fully
-  static playlist — it cannot accept runtime uploads (startup-only scan).
+  Runs in **normal (non-demo) mode**, no S3 needed: `/upload/complete` only
+  stores a URL on the room + broadcasts SET_AUDIO_SOURCES — it never touches
+  S3. The presign endpoint is the only S3-coupled part and we don't call it.
+  Admin auth: `?creator=$CREATOR_SECRET` on the WS URL.
+  Demo mode (`DEMO=1`, startup-scanned local audio dir) remains a fallback for
+  a fully static playlist — it cannot accept runtime uploads.
   Update flow: bump submodule SHA, re-copy `packages/shared` into
   `web/src/vendor/beatsync-shared/`, fix type breaks.
+- `ingest/` — zero-dep Node service, **LAN-only** (never routed through
+  cloudflared). `PUT /media/<name>` (Bearer $INGEST_TOKEN) writes to `media/`;
+  GETs serve files directly (dev convenience). Filename sanitized to basename
+  + safe charset; audio extensions only.
+- `media/` — audio store on the host; Caddy serves it publicly at `/media/*`.
 - `web/` — Vite + React + TS listener SPA. Same-origin deployment: resolves
-  `ws(s)://{host}/ws` and source URLs against the page origin (absolute S3
-  URLs pass through untouched).
-- `bridge/` — Node admin WS client (upload/play/pause/status/watch).
+  `ws(s)://{host}/ws` and source URLs against the page origin (absolute
+  /media/... URLs pass through untouched).
+- `bridge/` — Node admin WS client (push/upload/play/pause/status/watch).
   The FPP plugin replicates this protocol (Python WS+HTTP client) and should
-  keep its admin WS connected persistently: a room idle >60s is deleted AND
-  its uploaded audio purged from S3.
-- `deploy/` — Caddyfile + cloudflared config. Public ingress:
-  cloudflared → Caddy (:80) → static `web/dist` + proxy `/ws`, `/audio/*` →
-  beatsync:8080. Admin WS stays LAN-only (secret never crosses Cloudflare).
+  keep its admin WS connected persistently: a room idle >60s is deleted.
+- `deploy/` — Caddyfile + docker-compose + cloudflared config. Public ingress:
+  cloudflared → Caddy (:80) → static `web/dist` + `/media/*` from `media/` +
+  proxy `/ws`, `/health` → beatsync:8080. Admin WS + ingest stay LAN-only
+  (secrets never cross Cloudflare).
+
+## Audio push flow (no S3)
+
+1. Plugin `PUT http://falconbeat-host:8090/media/song.mp3` (Bearer token) →
+   file lands in `media/`
+2. Plugin `POST http://beatsync:8080/upload/complete`
+   `{roomId, originalName, publicUrl: "https://<host>/media/song.mp3"}` →
+   room gets the source, phones preload it
+3. Plugin WS: `{type:"PLAY", audioSource: publicUrl, trackTimeSeconds: pos}`
+
+Phones fetch `https://<host>/media/song.mp3` straight from Caddy — BeatSync
+only ever stores the URL.
+
+Known noise without S3_* configured: BackupManager logs a failed backup every
+60s and on SIGTERM (which also makes shutdown fall through to Docker's SIGKILL
+timeout). Harmless — room state is in-memory anyway; nothing lives in S3.
+A room idle >60s is still deleted from memory (the S3 delete inside cleanup
+fails but the room is removed regardless).
 
 ## Hard-won protocol facts (verified against server source @ 94c38ab)
 
@@ -63,10 +85,14 @@ npm run build && npm run typecheck
 
 # BeatSync server (needs Bun; deploy runs Docker/oven/bun:1)
 cd beatsync && bun install
-DEMO=1 DEMO_AUDIO_DIR=../audio DEMO_ADMIN_SECRET=... bun server
+cd apps/server && CREATOR_SECRET=... bun src/index.ts   # non-demo, no S3 needed
+
+# Ingest (zero-dep Node ≥22.18)
+cd ingest && MEDIA_DIR=../media INGEST_TOKEN=... node server.ts   # :8090
 
 # Bridge (zero-dep, Node ≥22.18 runs .ts directly)
-cd bridge && cp .env.example .env   # set ADMIN_SECRET
-node --env-file=.env src/cli.ts play "Song.mp3" --pos 0
+cd bridge && cp .env.example .env   # set CREATOR_SECRET + INGEST_TOKEN
+node --env-file=.env src/cli.ts push "Song.mp3"          # → ingest + register
+node --env-file=.env src/cli.ts play "<publicUrl>" --pos 0
 node --env-file=.env src/cli.ts status|watch|pause
 ```

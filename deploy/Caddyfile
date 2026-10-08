@@ -1,9 +1,10 @@
-# FalconBeat edge: static SPA + proxy to BeatSync on the same origin.
-# The listener page resolves ws(s)://{host}/ws and /audio/* same-origin —
-# no CORS, no NEXT_PUBLIC_* env needed.
+# FalconBeat edge: static SPA + media + proxy to BeatSync on one origin.
+# The listener page resolves ws(s)://{host}/ws same-origin — no CORS, no
+# NEXT_PUBLIC_* env. Audio URLs registered with BeatSync are absolute
+# (https://{host}/media/...) so phones fetch them straight from Caddy —
+# the BeatSync server never touches audio bytes.
 
 :80 {
-	root * /srv/falconbeat
 	encode gzip
 
 	# BeatSync WebSocket (reverse_proxy handles the Upgrade)
@@ -11,16 +12,25 @@
 		reverse_proxy beatsync:8080
 	}
 
-	# Demo-mode audio + harmless introspection endpoints
-	handle /audio/* {
-		reverse_proxy beatsync:8080
-	}
+	# Harmless introspection endpoints
 	handle /health* {
 		reverse_proxy beatsync:8080
 	}
 
+	# Show audio pushed by the FPP plugin via the ingest service (LAN-only),
+	# served to phones straight from disk.
+	handle /media/* {
+		root * /srv/media
+		uri strip_prefix /media
+		file_server {
+			# Audio files are immutable per show — safe to cache hard
+			header Cache-Control "public, max-age=3600, immutable"
+		}
+	}
+
 	# Everything else → the Vite SPA
 	handle {
+		root * /srv/falconbeat
 		try_files {path} /index.html
 		file_server
 	}

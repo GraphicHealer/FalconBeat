@@ -1,41 +1,49 @@
 # FalconBeat on the show LAN. cloudflared terminates TLS and points at `web`.
 #
-#   cp .env.example .env   # set CREATOR_SECRET + S3_* vars
+#   cp .env.example .env   # set CREATOR_SECRET + INGEST_TOKEN
 #   npm --prefix ../web run build
 #   docker compose -f deploy/docker-compose.yml up -d --build
 #
-# Non-demo mode: the FPP plugin pushes audio via POST /upload/* (S3 presign),
-# so the room's source list is dynamic. Keep the plugin's admin WS connected —
-# a room with zero clients for 60s is deleted AND its R2 audio purged.
+# Audio flow (no S3): FPP plugin PUTs files to ingest (:8090, LAN-only) →
+# registers the public URL via POST /upload/complete → Caddy serves
+# /media/* to phones through the tunnel. BeatSync stores URLs, not bytes.
+# Keep the plugin's admin WS connected — a room idle >60s is deleted.
 
 services:
   beatsync:
     build: ../beatsync
     restart: unless-stopped
     env_file: .env
-    # LAN admin + plugin access; cloudflared reaches it via `web` (Caddy).
+    # CREATOR_SECRET — admin auth for plugin/bridge (?creator=)
+    # No S3_* vars: presigned-upload endpoint is unused; upload/complete
+    # only stores the URL. BackupManager will log S3 errors every 60s —
+    # harmless noise; silence it later with a stub bucket if it annoys you.
     ports:
-      - "8080:8080"
+      - "8080:8080"   # LAN: plugin admin WS + upload/complete
+
+  ingest:
+    image: node:24-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: node server.ts
+    volumes:
+      - ../ingest/server.ts:/app/server.ts:ro
+      - ../media:/media
+    environment:
+      PORT: "8090"
+      MEDIA_DIR: /media
+      INGEST_TOKEN: ${INGEST_TOKEN:?set in .env}
+    ports:
+      - "8090:8090"   # LAN only — do NOT route this through cloudflared
 
   web:
     image: caddy:2-alpine
     restart: unless-stopped
     volumes:
       - ../web/dist:/srv/falconbeat:ro
+      - ../media:/srv/media:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
       - "8000:80"   # cloudflared ingress target: http://localhost:8000
     depends_on:
       - beatsync
-
-  # ── Optional: self-hosted S3 instead of R2 ─────────────────────────
-  # minio:
-  #   image: minio/minio
-  #   command: server /data --console-address ":9001"
-  #   volumes: [ "minio-data:/data" ]
-  #   environment:
-  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID}
-  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY}
-  #   # expose via second cloudflared hostname → S3_PUBLIC_URL
-  # volumes:
-  #   minio-data:

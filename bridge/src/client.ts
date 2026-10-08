@@ -25,6 +25,12 @@ export interface BridgeConfig {
   adminSecret: string;
   /** Non-demo mode: ?creator= secret → guaranteed admin regardless of join order */
   creatorSecret: string;
+  /** Ingest service base (LAN), e.g. http://falconbeat-host:8090 */
+  ingestUrl: string;
+  /** Bearer token for ingest PUTs */
+  ingestToken: string;
+  /** Public base phones fetch audio from, e.g. https://falconbeat.example.com/media */
+  mediaPublicUrl: string;
 }
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): BridgeConfig {
@@ -36,6 +42,9 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): BridgeConfi
     roomId: env.ROOM_ID ?? "000000",
     adminSecret: env.ADMIN_SECRET ?? "",
     creatorSecret: env.CREATOR_SECRET ?? "",
+    ingestUrl: env.INGEST_URL ?? "http://localhost:8090",
+    ingestToken: env.INGEST_TOKEN ?? "",
+    mediaPublicUrl: env.MEDIA_PUBLIC_URL ?? "http://localhost:8090/media",
   };
 }
 
@@ -65,10 +74,53 @@ export function resolveSource(fileOrUrl: string): string {
 }
 
 /**
- * Non-demo upload flow — pushes an audio file into the room:
+ * S3-free push flow (the FalconBeat default):
+ *   PUT file → ingest service (lands in the media dir Caddy serves)
+ *   POST /upload/complete {roomId, originalName, publicUrl}
+ *     — registers the URL on the room + broadcasts SET_AUDIO_SOURCES.
+ *     upload/complete never touches S3; it just stores the URL.
+ * The room must exist, so we hold a WS open for the duration.
+ * Returns the public URL to pass to PLAY.
+ */
+export async function pushAudio(cfg: BridgeConfig, filePath: string): Promise<string> {
+  const { readFile } = await import("node:fs/promises");
+  const { basename } = await import("node:path");
+
+  const fileName = basename(filePath);
+  const bytes = await readFile(filePath);
+
+  // Hold the room open during the push (upload/complete needs it to exist)
+  const ws = await connect(cfg);
+  try {
+    const putRes = await fetch(`${cfg.ingestUrl}/media/${encodeURIComponent(fileName)}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${cfg.ingestToken}` },
+      body: bytes,
+    });
+    if (!putRes.ok) {
+      throw new Error(`ingest PUT → HTTP ${putRes.status}: ${await putRes.text()}`);
+    }
+    const { stored } = (await putRes.json()) as { stored: string };
+    const publicUrl = `${cfg.mediaPublicUrl}/${encodeURIComponent(stored)}`;
+
+    const completeRes = await fetch(`${httpBase(cfg)}/upload/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId: cfg.roomId, originalName: fileName, publicUrl }),
+    });
+    if (!completeRes.ok) {
+      throw new Error(`upload/complete → HTTP ${completeRes.status}: ${await completeRes.text()}`);
+    }
+    return publicUrl;
+  } finally {
+    ws.close();
+  }
+}
+
+/**
+ * Non-demo upload flow via BeatSync's built-in S3 presign path — kept for
+ * the R2/MinIO alternative. Requires S3_* env on the server.
  *   POST /upload/get-presigned-url → PUT bytes to S3 → POST /upload/complete
- * The room must exist (>=1 connected client), so we hold a WS open for the
- * duration. Returns the public URL to pass to PLAY.
  */
 export async function uploadAudio(cfg: BridgeConfig, filePath: string): Promise<string> {
   const { readFile } = await import("node:fs/promises");
