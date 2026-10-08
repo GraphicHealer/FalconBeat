@@ -1,0 +1,16 @@
+{
+  "name": "falconbeat-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Admin WebSocket client for the FalconBeat/BeatSync server — protocol reference for the FPP plugin",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "play": "node src/cli.ts play",
+    "pause": "node src/cli.ts pause",
+    "status": "node src/cli.ts status",
+    "watch": "node src/cli.ts watch"
+  }
+}

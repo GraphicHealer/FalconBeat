@@ -1,0 +1,3 @@
+[submodule "beatsync"]
+	path = beatsync
+	url = https://github.com/freeman-jiang/beatsync.git

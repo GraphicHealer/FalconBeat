@@ -1,0 +1,37 @@
+# FalconBeat on the show LAN. cloudflared terminates TLS and points at `web`.
+#
+#   cp .env.example .env   # set DEMO_ADMIN_SECRET + hostname
+#   npm --prefix ../web run build
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Audio must be in ../audio BEFORE beatsync boots — demo mode scans the dir
+# once at startup; files added later are invisible until a restart.
+
+services:
+  beatsync:
+    build: ../beatsync
+    restart: unless-stopped
+    environment:
+      DEMO: "1"
+      DEMO_ROOM: "000000"           # fixed room id
+      DEMO_AUDIO_DIR: /audio
+      DEMO_ADMIN_SECRET: ${DEMO_ADMIN_SECRET:?set in .env}
+    volumes:
+      - ../audio:/audio:ro
+    expose:
+      - "8080"
+    # LAN-only admin access: the FPP plugin dials this port directly.
+    # Port is also published on the LAN so the plugin can reach it:
+    ports:
+      - "8080:8080"
+
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    volumes:
+      - ../web/dist:/srv/falconbeat:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "8000:80"   # cloudflared ingress target: http://localhost:8000
+    depends_on:
+      - beatsync

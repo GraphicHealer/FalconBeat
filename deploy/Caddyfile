@@ -1,0 +1,27 @@
+# FalconBeat edge: static SPA + proxy to BeatSync on the same origin.
+# The listener page resolves ws(s)://{host}/ws and /audio/* same-origin —
+# no CORS, no NEXT_PUBLIC_* env needed.
+
+:80 {
+	root * /srv/falconbeat
+	encode gzip
+
+	# BeatSync WebSocket (reverse_proxy handles the Upgrade)
+	handle /ws* {
+		reverse_proxy beatsync:8080
+	}
+
+	# Demo-mode audio + harmless introspection endpoints
+	handle /audio/* {
+		reverse_proxy beatsync:8080
+	}
+	handle /health* {
+		reverse_proxy beatsync:8080
+	}
+
+	# Everything else → the Vite SPA
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
