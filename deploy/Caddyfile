@@ -8,13 +8,15 @@
 	encode gzip
 
 	# BeatSync WebSocket (reverse_proxy handles the Upgrade)
+	# Upstream is env-overridable: localhost in the all-in-one image,
+	# beatsync:8080 if the services are ever split across containers.
 	handle /ws* {
-		reverse_proxy beatsync:8080
+		reverse_proxy {$BEATSYNC_UPSTREAM:localhost:8080}
 	}
 
 	# Harmless introspection endpoints
 	handle /health* {
-		reverse_proxy beatsync:8080
+		reverse_proxy {$BEATSYNC_UPSTREAM:localhost:8080}
 	}
 
 	# Show audio pushed by the FPP plugin via the ingest service (LAN-only),

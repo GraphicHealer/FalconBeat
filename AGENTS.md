@@ -27,10 +27,17 @@ Falcon Player (FPP). Built on a self-hosted, **unmodified** BeatSync server
 - `bridge/` — Node admin WS client (push/upload/play/pause/status/watch).
   The FPP plugin replicates this protocol (Python WS+HTTP client) and should
   keep its admin WS connected persistently: a room idle >60s is deleted.
-- `deploy/` — Caddyfile + docker-compose + cloudflared config. Public ingress:
-  cloudflared → Caddy (:80) → static `web/dist` + `/media/*` from `media/` +
-  proxy `/ws`, `/health` → beatsync:8080. Admin WS + ingest stay LAN-only
-  (secrets never cross Cloudflare).
+- `deploy/` — all-in-one Dockerfile + entrypoint supervisor + Caddyfile +
+  compose + cloudflared config. Single container runs three processes:
+  beatsync (Bun, :8080), ingest (Bun, :8090), Caddy (:80) — entrypoint.sh
+  kills the container if any child dies so the restart policy heals it.
+  Public ingress: cloudflared → Caddy → `web/dist` + `/media/*` from
+  `media/` + proxy `/ws`,`/health` → beatsync on localhost. Admin WS +
+  ingest stay LAN-only (secrets never cross Cloudflare). Caddyfile's
+  `{$BEATSYNC_UPSTREAM:localhost:8080}` also works split across containers.
+  Alternative shape (if ever needed): three separate services — beatsync
+  from `beatsync/Dockerfile`, ingest on node:24-alpine, Caddy with
+  `BEATSYNC_UPSTREAM=beatsync:8080`.
 
 ## Audio push flow (no S3)
 
