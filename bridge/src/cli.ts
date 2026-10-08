@@ -9,7 +9,14 @@
  * Env: BEATSYNC_URL=ws://host:8080  ADMIN_SECRET=...  ROOM_ID=000000
  * (load with: node --env-file=.env src/cli.ts ...)
  */
-import { audioSourceUrl, configFromEnv, connect, fetchPlaybackState, sendCommand } from "./client.ts";
+import {
+  configFromEnv,
+  connect,
+  fetchPlaybackState,
+  resolveSource,
+  sendCommand,
+  uploadAudio,
+} from "./client.ts";
 
 const cfg = configFromEnv();
 const [cmd, ...args] = process.argv.slice(2);
@@ -23,25 +30,37 @@ const usage = () => {
   console.log(`Usage: node src/cli.ts <command>
 
 Commands:
-  play <file.mp3> [--pos seconds]   Synced play of a file in DEMO_AUDIO_DIR
+  upload <file.mp3>                 Push audio into the room (non-demo mode;
+                                    prints the source URL to pass to play)
+  play <file.mp3|url> [--pos sec]   Synced play — demo filename or upload URL
   pause [--pos seconds]             Synced pause (defaults to live position)
   status                            Show room playback state via /discover
   watch                             Stay connected, log every server message
 
-Env:  BEATSYNC_URL (default ws://localhost:8080)
-      ADMIN_SECRET (required to play/pause — demo mode admin gate)
-      ROOM_ID      (default 000000)`);
+Env:  BEATSYNC_URL   (default ws://localhost:8080)
+      ADMIN_SECRET   demo mode: ?admin= gate
+      CREATOR_SECRET non-demo: ?creator= → guaranteed admin
+      ROOM_ID        (default 000000)`);
   process.exit(cmd === "help" || cmd === "--help" ? 0 : 1);
 };
 
 if (!cmd) usage();
 
 switch (cmd) {
+  case "upload": {
+    const file = args[0];
+    if (!file) usage();
+    console.log(`Uploading ${file} → ${cfg.host} room ${cfg.roomId}`);
+    const publicUrl = await uploadAudio(cfg, file);
+    console.log(`✓ uploaded; source URL:\n  ${publicUrl}`);
+    break;
+  }
+
   case "play": {
     const file = args[0];
     if (!file) usage();
     const pos = Number(flag("pos") ?? 0);
-    const audioSource = audioSourceUrl(file);
+    const audioSource = resolveSource(file);
     console.log(`PLAY ${audioSource} @ ${pos}s → ${cfg.host} room ${cfg.roomId}`);
     const echo = await sendCommand(cfg, { type: "PLAY", audioSource, trackTimeSeconds: pos });
     console.log(`✓ scheduled at server time ${echo.serverTimeToExecute}`);

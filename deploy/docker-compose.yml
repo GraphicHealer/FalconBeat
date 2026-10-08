@@ -1,27 +1,19 @@
 # FalconBeat on the show LAN. cloudflared terminates TLS and points at `web`.
 #
-#   cp .env.example .env   # set DEMO_ADMIN_SECRET + hostname
+#   cp .env.example .env   # set CREATOR_SECRET + S3_* vars
 #   npm --prefix ../web run build
 #   docker compose -f deploy/docker-compose.yml up -d --build
 #
-# Audio must be in ../audio BEFORE beatsync boots — demo mode scans the dir
-# once at startup; files added later are invisible until a restart.
+# Non-demo mode: the FPP plugin pushes audio via POST /upload/* (S3 presign),
+# so the room's source list is dynamic. Keep the plugin's admin WS connected —
+# a room with zero clients for 60s is deleted AND its R2 audio purged.
 
 services:
   beatsync:
     build: ../beatsync
     restart: unless-stopped
-    environment:
-      DEMO: "1"
-      DEMO_ROOM: "000000"           # fixed room id
-      DEMO_AUDIO_DIR: /audio
-      DEMO_ADMIN_SECRET: ${DEMO_ADMIN_SECRET:?set in .env}
-    volumes:
-      - ../audio:/audio:ro
-    expose:
-      - "8080"
-    # LAN-only admin access: the FPP plugin dials this port directly.
-    # Port is also published on the LAN so the plugin can reach it:
+    env_file: .env
+    # LAN admin + plugin access; cloudflared reaches it via `web` (Caddy).
     ports:
       - "8080:8080"
 
@@ -35,3 +27,15 @@ services:
       - "8000:80"   # cloudflared ingress target: http://localhost:8000
     depends_on:
       - beatsync
+
+  # ── Optional: self-hosted S3 instead of R2 ─────────────────────────
+  # minio:
+  #   image: minio/minio
+  #   command: server /data --console-address ":9001"
+  #   volumes: [ "minio-data:/data" ]
+  #   environment:
+  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID}
+  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY}
+  #   # expose via second cloudflared hostname → S3_PUBLIC_URL
+  # volumes:
+  #   minio-data:

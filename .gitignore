@@ -8,3 +8,4 @@ dist/
 # Show audio is staged here but never committed (copyrighted material)
 audio/*
 !audio/.gitkeep
+test/s3-data/

@@ -8,24 +8,37 @@ Falcon Player (FPP). Built on a self-hosted, **unmodified** BeatSync server
 ## Architecture
 
 - `beatsync/` — upstream clone pinned by commit SHA (no tags exist upstream).
-  Runs with `DEMO=1`: fixed room `000000`, audio served from `DEMO_AUDIO_DIR`
-  (in-memory, immutable), admin via `?admin=$DEMO_ADMIN_SECRET` on the WS URL.
-  **No R2/S3 needed.** Update flow: bump submodule SHA, re-copy `packages/shared`
-  into `web/src/vendor/beatsync-shared/`, fix type breaks.
+  Runs in **normal (non-demo) mode** so the FPP plugin can push audio at runtime:
+  `POST /upload/get-presigned-url` → PUT to S3 → `POST /upload/complete`
+  (adds source to room + broadcasts SET_AUDIO_SOURCES; phones preload).
+  S3-compatible store required — Cloudflare R2 recommended (free tier, no
+  egress fees). Admin auth: `?creator=$CREATOR_SECRET` on the WS URL.
+  Demo mode (`DEMO=1`, local audio dir, no S3) remains a fallback for a fully
+  static playlist — it cannot accept runtime uploads (startup-only scan).
+  Update flow: bump submodule SHA, re-copy `packages/shared` into
+  `web/src/vendor/beatsync-shared/`, fix type breaks.
 - `web/` — Vite + React + TS listener SPA. Same-origin deployment: resolves
-  `ws(s)://{host}/ws` and `/audio/*` against the page origin.
-- `bridge/` — Node admin WS client. Connects as admin to room 000000, sends
-  PLAY/PAUSE. The FPP plugin will replicate this protocol (Python WS client).
+  `ws(s)://{host}/ws` and source URLs against the page origin (absolute S3
+  URLs pass through untouched).
+- `bridge/` — Node admin WS client (upload/play/pause/status/watch).
+  The FPP plugin replicates this protocol (Python WS+HTTP client) and should
+  keep its admin WS connected persistently: a room idle >60s is deleted AND
+  its uploaded audio purged from S3.
 - `deploy/` — Caddyfile + cloudflared config. Public ingress:
   cloudflared → Caddy (:80) → static `web/dist` + proxy `/ws`, `/audio/*` →
   beatsync:8080. Admin WS stays LAN-only (secret never crosses Cloudflare).
 
 ## Hard-won protocol facts (verified against server source @ 94c38ab)
 
-- No HTTP play endpoint — control is WS-only. Rooms auto-create on first join.
-- Demo mode scans `DEMO_AUDIO_DIR` **once at startup** and seeds the room source
-  list from it. Files added later are invisible (404 + PLAY rejected as unknown).
-  → All show audio must be staged before server boot, or we add a rescan patch.
+- No HTTP play endpoint — playback control is WS-only. Rooms auto-create on
+  first join; presigned-upload requires the room to already exist.
+- Non-demo admin: `?creator=` secret (or first-joiner). `?admin=` is demo-only.
+- Demo mode scans `DEMO_AUDIO_DIR` **once at startup** — runtime pushes are
+  impossible (404 + PLAY rejected). Use normal mode for plugin-driven audio.
+- Non-demo PLAY goes through load-coordination (LOAD_AUDIO_SOURCE → client
+  ACKs → play when all loaded or 3s timeout). Phones preloaded on
+  SET_AUDIO_SOURCES ACK fast; gate FPP start on the SCHEDULED_ACTION echo.
+- `/discover` only reports rooms with ≥1 connected client that are playing.
 - `PLAY`/`PAUSE` broadcast `SCHEDULED_ACTION` with `serverTimeToExecute` =
   `epochNow + max(400ms, 1.5*maxRTT+200, maxCompensation+200)`, capped 3s.
   `epochNow() = performance.timeOrigin + performance.now()` (ms since epoch).
