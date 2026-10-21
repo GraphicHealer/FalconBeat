@@ -10,7 +10,7 @@ the companion plugin: **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer
 
 ## Requirements
 
-- A Docker host (Linux box, or FPP's own Docker if your FPP image supports it) on the
+- A Docker host (any Linux box, Pi, or NAS — amd64 or arm64) on the
   **same LAN as the FPP controller**
 - FPP with **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer/fpp-plugin-FalconBeat)**
   installed (FPP → Content Setup → Plugin Manager → paste the repo URL)
@@ -22,8 +22,16 @@ the companion plugin: **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer
 ```bash
 cd deploy
 cp .env.example .env          # set CREATOR_SECRET + INGEST_TOKEN (long random strings)
-docker compose up -d --build  # builds and runs the all-in-one container
+docker compose up -d          # pulls the CI-built image from GHCR
 ```
+
+To build locally instead of pulling: `docker compose up -d --build`.
+
+The published image is `ghcr.io/graphichealer/falconbeat` (amd64 + arm64, so it
+runs on a Pi too), built by `.github/workflows/docker.yml` on every push to
+`main` and every `v*` tag. Note: GHCR packages default to **private** — make the
+package public (Packages → falconbeat → Package settings) or `docker login
+ghcr.io` on the Docker host first.
 
 One container runs everything: the BeatSync server (Bun), the media ingest service,
 and Caddy serving the listener page + audio. Verify it came up:

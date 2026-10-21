@@ -11,9 +11,13 @@
 
 services:
   falconbeat:
+    # Pulls the CI-built image (GHCR). `docker compose build` still works
+    # locally and tags to this same name.
+    image: ghcr.io/graphichealer/falconbeat:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    pull_policy: missing
     restart: unless-stopped
     env_file: .env
     # CREATOR_SECRET — admin auth for plugin/bridge (?creator=), LAN-side
