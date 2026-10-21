@@ -1,12 +1,11 @@
 name: docker
 
+# Images publish only on version releases — pushes/PRs are covered by ci.yml.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   release:
     types: [published]
-  pull_request:
 
 concurrency:
   group: docker-${{ github.ref }}

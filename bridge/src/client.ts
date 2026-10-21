@@ -249,7 +249,7 @@ export async function sendCommand(
       if (msg.type !== "SCHEDULED_ACTION") return;
       const action = (msg as { scheduledAction?: { type?: string; audioSource?: string } })
         .scheduledAction;
-      if (action?.type !== request.type) return;
+      if (!action || action.type !== request.type) return;
       if (request.audioSource && action.audioSource !== request.audioSource) return;
       resolveEcho?.(msg as never);
     },

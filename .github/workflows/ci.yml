@@ -1,0 +1,73 @@
+name: ci
+
+# Fast checks on every push/PR. Docker image builds happen only on
+# version releases — see docker.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build   # tsc -b (typecheck) + vite build
+      - run: npm run lint    # oxlint
+
+  bridge:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+
+  ingest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ingest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ingest/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+
+  beatsync:
+    # Typechecks the pinned upstream submodule — catches protocol/type
+    # drift when the pin is bumped.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --ignore-scripts
+        working-directory: beatsync
+      - run: bun run type-check
+        working-directory: beatsync/apps/server
