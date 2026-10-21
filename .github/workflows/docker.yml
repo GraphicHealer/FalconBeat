@@ -8,6 +8,10 @@ on:
     types: [published]
   pull_request:
 
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true   # a newer push makes stale builds pointless
+
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}   # ghcr.io/<owner>/falconbeat
 
