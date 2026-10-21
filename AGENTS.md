@@ -3,7 +3,10 @@
 Synced light-show audio: visitors' phones play show audio in tight sync, triggered by
 Falcon Player (FPP). Built on a self-hosted, **unmodified** BeatSync server
 (`beatsync/` submodule) + custom Vite listener page (`web/`) + admin control client
-(`bridge/` — protocol reference for the future FPP plugin).
+(`bridge/` — protocol reference; the real plugin lives at
+github.com/GraphicHealer/fpp-plugin-FalconBeat, settings map 1:1 to server env:
+beatsyncUrl→:8080, ingestUrl→:8090, creatorSecret→CREATOR_SECRET,
+ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM_ID).
 
 ## Architecture
 

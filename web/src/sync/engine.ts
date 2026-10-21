@@ -36,7 +36,8 @@ export interface EngineState {
   reconnectAttempt: number;
 }
 
-const ROOM_ID = "000000";
+// Room matches the plugin's Room ID setting (default 000000); override with ?room=
+const ROOM_ID = new URLSearchParams(location.search).get("room") ?? "000000";
 const MAX_MEASUREMENTS = NTP_CONSTANTS.MAX_MEASUREMENTS;
 const CONNECTION_TIMEOUT_MS = 5000;
 const MAX_RECONNECT_ATTEMPTS = 15;
