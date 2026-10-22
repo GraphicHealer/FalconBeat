@@ -19,6 +19,12 @@ FROM oven/bun:1 AS beatsync-build
 WORKDIR /bs
 COPY --from=beatsync-deps /bs /bs
 COPY beatsync/apps/server/src ./apps/server/src
+# FalconBeat: no R2 in our deployment — neuter upstream's S3 backup hooks
+# (startup restore + 60s backup loop + SIGTERM final backup), all gated on
+# `if (!IS_DEMO_MODE)` in index.ts. Kills the per-minute "State backup
+# failed" stack spam and the slow backup-waiting shutdown. Submodule stays
+# pristine; the patch exists only in this image build.
+RUN sed -i 's/if (!IS_DEMO_MODE) {/if (false) {/' apps/server/src/index.ts
 COPY beatsync/apps/server/tsconfig.json ./apps/server/tsconfig.json
 COPY beatsync/packages/shared ./packages/shared
 WORKDIR /bs/apps/server

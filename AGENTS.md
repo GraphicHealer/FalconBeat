@@ -88,11 +88,13 @@ only ever stores the URL.
   socket is isAdmin, so it doesn't count).
 - Caddy serves `/media/*.json` with `no-cache`; audio keeps `immutable`.
 
-Known noise without S3_* configured: BackupManager logs a failed backup every
-60s and on SIGTERM (which also makes shutdown fall through to Docker's SIGKILL
-timeout). Harmless — room state is in-memory anyway; nothing lives in S3.
-A room idle >60s is still deleted from memory (the S3 delete inside cleanup
-fails but the room is removed regardless).
+S3 backups are disabled in the image: the Dockerfile seds upstream index.ts's
+two `if (!IS_DEMO_MODE)` blocks (startup restore + 60s backup loop + SIGTERM
+final backup) to `if (false)` before bundling — no R2 in our deployment, room
+state is in-memory anyway. If upstream's index.ts changes shape around those
+blocks, re-check the sed still lands (grep `!IS_DEMO_MODE` in index.ts after
+a submodule bump). Residual S3 noise: one caught `Room cleanup failed` line
+per 60s-idle room deletion — room is still removed from memory regardless.
 
 Room→source bindings are in-memory only: a server/container restart forgets
 registered tracks even though the files persist in media/. The plugin must
