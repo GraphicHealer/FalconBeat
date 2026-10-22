@@ -4,14 +4,18 @@ import { DEFAULT_SHOW, fetchShow, type ShowConfig, type ShowLink } from "./show"
 const LS_INGEST = "falconbeat.ingestUrl";
 const LS_TOKEN = "falconbeat.ingestToken";
 
+// On :8090 the page is served BY ingest — same-origin PUTs, nothing to configure.
 const defaultIngest = () =>
-  localStorage.getItem(LS_INGEST) ?? `${location.protocol}//${location.hostname}:8090`;
+  localStorage.getItem(LS_INGEST) ??
+  (location.port === "8090"
+    ? location.origin
+    : `${location.protocol}//${location.hostname}:8090`);
 
 /**
  * Operator settings page (/settings). Edits show.json via the LAN-only ingest
- * service — open this page from a device on the show network, e.g.
- * http://falconbeat-host:8000/settings. Nothing here is reachable from the
- * public internet; the token is stored in this browser's localStorage.
+ * service — open it on the show network at http://falconbeat-host:8090/settings
+ * (served by ingest itself, same-origin PUTs). The token is stored in this
+ * browser's localStorage.
  */
 export default function Settings() {
   const [ingestUrl, setIngestUrl] = useState(defaultIngest);

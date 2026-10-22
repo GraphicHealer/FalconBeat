@@ -83,8 +83,9 @@ Two JSON docs live alongside the audio in `media/` and are served publicly at
 
 - **`show.json`** — what the listener page displays: `showName`, `tagline`,
   `description`, `schedule`, `location`, `links: [{label, url}]`. Edit it from
-  any device on the LAN at `http://<docker-host>:8000/settings` (asks for the
-  ingest token, saved in the browser's localStorage). You can also edit the
+  any device on the LAN at `http://<docker-host>:8090/settings` — the ingest
+  service itself serves the settings page (LAN-only, same-origin PUTs; asks for
+  the ingest token, saved in the browser's localStorage). You can also edit the
   file on the share directly.
 - **`nowplaying.json`** — pushed by the plugin on every track/stop event:
   `{playing, title, artist, album, filename, updatedAtMs}`. The page polls it

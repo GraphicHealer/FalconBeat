@@ -47,6 +47,7 @@ RUN chmod +x /entrypoint.sh && mkdir -p /media
 EXPOSE 80 8080 8090
 ENV NODE_ENV=production \
     MEDIA_DIR=/media \
-    PORT=8090
+    PORT=8090 \
+    WEB_DIST=/srv/falconbeat
 
 ENTRYPOINT ["/entrypoint.sh"]

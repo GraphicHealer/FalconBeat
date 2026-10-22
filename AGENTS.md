@@ -22,8 +22,10 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
 - `ingest/` — zero-dep Node service, **LAN-only** (never routed through
   cloudflared). `PUT /media/<name>` (Bearer $INGEST_TOKEN) writes to `media/`;
   `PUT /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
-  files (dev convenience). Permissive CORS so the SPA's `/settings` page can
-  PUT cross-origin from the operator's browser on the LAN.
+  files (dev convenience). With `WEB_DIST` set (to the Vite build output,
+  `/srv/falconbeat` in the image) it also serves the SPA as a fallback —
+  that's how `/settings` is LAN-only while remaining same-origin for PUTs.
+  Permissive CORS remains for the public-SPA path.
 - `media/` — audio store on the host; Caddy serves it publicly at `/media/*`.
 - `web/` — Vite + React + TS listener SPA. Same-origin deployment: resolves
   `ws(s)://{host}/ws` and source URLs against the page origin (absolute

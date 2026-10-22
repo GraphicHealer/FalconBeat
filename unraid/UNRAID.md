@@ -46,6 +46,11 @@ Generate secrets: `openssl rand -hex 32` (or any password manager).
 The container must be on the **same LAN** as your FPP controller — the plugin
 reaches `:8080` and `:8090` directly, no tunnel.
 
+The show-settings page (name, schedule, links — what visitors see) is at
+`http://<unraid-ip>:8090/settings`, served by the internal ingest service so it
+stays LAN-only. It'll ask for the Ingest Token once and remember it in the
+browser.
+
 ## Public ingress
 
 Phones need HTTPS (WebAudio/WSS), so put a Cloudflare Tunnel in front of the

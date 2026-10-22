@@ -7,20 +7,23 @@
  *                             per-track metadata; {playing:false} when off air)
  *   GET  /media|/config/<n>   serve file (dev convenience; prod GETs go through Caddy)
  *   GET  /health
+ *   GET  /*                   SPA fallback → WEB_DIST (optional; serves the listener
+ *                             page + /settings on the LAN port, same-origin PUTs)
  *
  * The plugin then registers the file with BeatSync via POST /upload/complete
  * {roomId, originalName, publicUrl} where publicUrl = MEDIA_PUBLIC_URL/media/<name>.
  * BeatSync stores the URL and broadcasts it — it never touches the bytes.
  *
- * Env: PORT=8090  MEDIA_DIR=./media  INGEST_TOKEN=...
+ * Env: PORT=8090  MEDIA_DIR=./media  INGEST_TOKEN=...  WEB_DIST=/srv/falconbeat (opt)
  * Run: node server.ts   (Node ≥22.18, zero deps; also runs under Bun)
  */
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, normalize, resolve, sep } from "node:path";
 
 const PORT = Number(process.env.PORT ?? 8090);
 const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? "./media");
+const WEB_DIST = process.env.WEB_DIST ? resolve(process.env.WEB_DIST) : null;
 const TOKEN = process.env.INGEST_TOKEN ?? "";
 
 const AUDIO_EXT = new Set([".mp3", ".wav", ".flac", ".ogg", ".m4a"]);
@@ -30,6 +33,17 @@ const MIME: Record<string, string> = {
   ".flac": "audio/flac",
   ".ogg": "audio/ogg",
   ".m4a": "audio/mp4",
+};
+const STATIC_MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 /** JSON docs writable via /config/<name> — show info and plugin-pushed now-playing. */
 const CONFIG_NAMES = new Set(["show", "nowplaying"]);
@@ -147,6 +161,27 @@ createServer(async (req, res) => {
         })
         .end(data);
       return;
+    }
+
+    // SPA fallback — serves the listener page + /settings on this LAN port
+    // when WEB_DIST points at the Vite build output. Same-origin /config PUTs.
+    if (WEB_DIST && (req.method === "GET" || req.method === "HEAD")) {
+      const rel = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, "");
+      let file = join(WEB_DIST, rel);
+      if (!file.startsWith(WEB_DIST + sep) && file !== WEB_DIST) {
+        return json(res, 403, { error: "forbidden" });
+      }
+      const s = await stat(file).catch(() => null);
+      if (!s?.isFile()) {
+        file = join(WEB_DIST, "index.html"); // client-side routes, e.g. /settings
+      }
+      const data = await readFile(file);
+      return res
+        .writeHead(200, {
+          "Content-Type": STATIC_MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
+          "Content-Length": data.length,
+        })
+        .end(req.method === "HEAD" ? undefined : data);
     }
 
     json(res, 404, { error: "not found" });
