@@ -115,7 +115,32 @@ const apicData = (f: Buffer, v22: boolean): { ext: string; data: Buffer } | null
   return off < f.length ? { ext, data: f.subarray(off) } : null;
 };
 
-const id3Art = (buf: Buffer): { ext: string; data: Buffer } | null => {
+interface TagData {
+  art?: { ext: string; data: Buffer };
+  tags?: { title?: string; artist?: string; album?: string };
+}
+
+/** ID3 text frame: [enc][text] → string (enc 0 latin1, 1 utf16+BOM, 2 utf16be, 3 utf8). */
+const decodeText = (f: Buffer): string => {
+  const enc = f[0];
+  const b = f.subarray(1);
+  if (enc === 1) {
+    const be = b.length >= 2 && b[0] === 0xfe && b[1] === 0xff;
+    const body = (be || (b.length >= 2 && b[0] === 0xff && b[1] === 0xfe)) ? b.subarray(2) : b;
+    return be ? Buffer.from(body).swap16().toString("utf16le") : body.toString("utf16le");
+  }
+  if (enc === 2) return Buffer.from(b).swap16().toString("utf16le");
+  if (enc === 3) return b.toString("utf8");
+  return b.toString("latin1");
+};
+
+const TEXT_FRAMES: Record<string, "title" | "artist" | "album"> = {
+  TIT2: "title", TPE1: "artist", TALB: "album", // v2.3/v2.4
+  TT2: "title", TP1: "artist", TAL: "album",   // v2.2
+};
+
+const id3TagData = (buf: Buffer): TagData => {
+  const out: TagData = {};
   const major = buf[3];
   const flags = buf[5];
   const tagEnd = Math.min(10 + syncsafe(buf, 6) + (flags & 0x10 ? 10 : 0), buf.length);
@@ -129,10 +154,13 @@ const id3Art = (buf: Buffer): { ext: string; data: Buffer } | null => {
       const id = buf.toString("latin1", pos, pos + 3);
       if (!/^[A-Z0-9]{3}$/.test(id)) break;
       const size = (buf[pos + 3] << 16) | (buf[pos + 4] << 8) | buf[pos + 5];
-      if (id === "PIC") {
-        let f = buf.subarray(pos + 6, pos + 6 + size);
-        if (flags & 0x80) f = deunsync(f);
-        return apicData(f, true);
+      let f = buf.subarray(pos + 6, pos + 6 + size);
+      if (flags & 0x80) f = deunsync(f);
+      if (id === "PIC" && !out.art) out.art = apicData(f, true) ?? undefined;
+      const key = TEXT_FRAMES[id];
+      if (key && !out.tags?.[key]) {
+        const t = decodeText(f).trim();
+        if (t) (out.tags ??= {})[key] = t;
       }
       pos += 6 + size;
     } else {
@@ -141,20 +169,24 @@ const id3Art = (buf: Buffer): { ext: string; data: Buffer } | null => {
       if (!/^[A-Z0-9]{4}$/.test(id)) break;
       const size = major === 4 ? syncsafe(buf, pos + 4) : buf.readUInt32BE(pos + 4);
       const fflags = buf.readUInt16BE(pos + 8);
-      if (id === "APIC") {
-        let f = buf.subarray(pos + 10, pos + 10 + size);
-        if ((major === 3 && (flags & 0x80) !== 0) || (major === 4 && (fflags & 0x0002) !== 0)) {
-          f = deunsync(f);
-        }
-        return apicData(f, false);
+      let f = buf.subarray(pos + 10, pos + 10 + size);
+      if ((major === 3 && (flags & 0x80) !== 0) || (major === 4 && (fflags & 0x0002) !== 0)) {
+        f = deunsync(f);
+      }
+      if (id === "APIC" && !out.art) out.art = apicData(f, false) ?? undefined;
+      const key = TEXT_FRAMES[id];
+      if (key && !out.tags?.[key]) {
+        const t = decodeText(f).trim();
+        if (t) (out.tags ??= {})[key] = t;
       }
       pos += 10 + size;
     }
   }
-  return null;
+  return out;
 };
 
-const flacArt = (buf: Buffer): { ext: string; data: Buffer } | null => {
+const flacTagData = (buf: Buffer): TagData => {
+  const out: TagData = {};
   let pos = 4; // past "fLaC"
   while (pos + 4 <= buf.length) {
     const last = (buf[pos] & 0x80) !== 0;
@@ -168,22 +200,39 @@ const flacArt = (buf: Buffer): { ext: string; data: Buffer } | null => {
       const descLen = b.readUInt32BE(4 + mimeLen);
       const off = 4 + mimeLen + 4 + descLen + 20; // +w/h/depth/colors +dataLen
       const dataLen = b.readUInt32BE(off - 4);
-      return off + dataLen <= b.length ? { ext, data: b.subarray(off, off + dataLen) } : null;
+      if (off + dataLen <= b.length) out.art = { ext, data: b.subarray(off, off + dataLen) };
+    }
+    if (type === 4 && pos + len <= buf.length) { // VORBIS_COMMENT
+      const b = buf.subarray(pos, pos + len);
+      let p = 4 + b.readUInt32LE(0); // vendor len + vendor
+      const count = b.readUInt32LE(p);
+      p += 4;
+      for (let i = 0; i < count && p + 4 <= b.length; i++) {
+        const l = b.readUInt32LE(p);
+        p += 4;
+        const entry = b.toString("utf8", p, p + l);
+        p += l;
+        const eq = entry.indexOf("=");
+        const key = entry.slice(0, eq).toUpperCase();
+        const val = entry.slice(eq + 1).trim();
+        const field = key === "TITLE" ? "title" : key === "ARTIST" ? "artist" : key === "ALBUM" ? "album" : null;
+        if (field && val && !out.tags?.[field]) (out.tags ??= {})[field] = val;
+      }
     }
     pos += len;
     if (last) break;
   }
-  return null;
+  return out;
 };
 
-const extractArt = (buf: Buffer): { ext: string; data: Buffer } | null => {
-  if (buf.length > 10 && buf.toString("latin1", 0, 3) === "ID3") return id3Art(buf);
-  if (buf.length > 4 && buf.toString("latin1", 0, 4) === "fLaC") return flacArt(buf);
-  return null;
+const extractTagData = (buf: Buffer): TagData => {
+  if (buf.length > 10 && buf.toString("latin1", 0, 3) === "ID3") return id3TagData(buf);
+  if (buf.length > 4 && buf.toString("latin1", 0, 4) === "fLaC") return flacTagData(buf);
+  return {};
 };
 
 /** Sidecar candidates for an audio file — written on PUT, removed on DELETE. */
-const artSidecars = (safe: string) => [`${safe}.art.jpg`, `${safe}.art.png`];
+const artSidecars = (safe: string) => [`${safe}.art.jpg`, `${safe}.art.png`, `${safe}.tags.json`];
 
 /** Strip to basename + safe charset; reject non-audio extensions. */
 const safeName = (raw: string): string | null => {
@@ -260,14 +309,17 @@ createServer(async (req, res) => {
       const bytes = await readBody(req);
       await mkdir(MEDIA_DIR, { recursive: true });
       await writeFile(join(MEDIA_DIR, safe), bytes);
-      // Embedded cover art → sidecar file the listener page displays.
-      // Clear stale sidecars of the other format first (a re-uploaded file
-      // may carry different art).
-      const art = extractArt(bytes);
+      // Embedded art + text tags → sidecar files the listener page
+      // displays (file metadata is authoritative over plugin-sent fields).
+      // Clear stale sidecars first (a re-upload may carry different data).
+      const meta = extractTagData(bytes);
       for (const side of artSidecars(safe)) {
-        if (art && side === `${safe}.art${art.ext}`) {
-          await writeFile(join(MEDIA_DIR, side), art.data);
-          console.log(`  art → ${side} (${art.data.length}B)`);
+        if (meta.art && side === `${safe}.art${meta.art.ext}`) {
+          await writeFile(join(MEDIA_DIR, side), meta.art.data);
+          console.log(`  art → ${side} (${meta.art.data.length}B)`);
+        } else if (meta.tags && side === `${safe}.tags.json`) {
+          await writeFile(join(MEDIA_DIR, side), JSON.stringify(meta.tags));
+          console.log(`  tags → ${side}`);
         } else {
           await unlink(join(MEDIA_DIR, side)).catch(() => {});
         }
@@ -296,9 +348,9 @@ createServer(async (req, res) => {
 
     if ((req.method === "GET" || req.method === "HEAD") && fileName) {
       const safe = safeName(fileName);
-      // Art sidecars aren't audio — match <audio-file>.art.jpg|png directly.
+      // Metadata sidecars aren't audio — match <file>.art.jpg|png|tags.json.
       const artRaw = basename(decodeURIComponent(fileName));
-      const artSafe = /\.art\.(jpe?g|png)$/i.test(artRaw) && !/[^\w.() \-']/.test(artRaw)
+      const artSafe = /\.(art\.(jpe?g|png)|tags\.json)$/i.test(artRaw) && !/[^\w.() \-']/.test(artRaw)
         ? artRaw
         : null;
       if (!safe && !artSafe) return json(res, 404, { error: "not found" });

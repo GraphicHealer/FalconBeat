@@ -68,18 +68,38 @@ export async function fetchNowPlaying(): Promise<NowPlaying | null> {
  * Album-art sidecar URLs for a media filename, best guess first.
  * Ingest extracts embedded art on upload to <file>.art.jpg|png; try both.
  */
-export function artCandidates(filename: string | null | undefined): string[] {
-  if (!filename) return [];
-  // Mirror ingest's safeName: basename + safe charset — the stored file (and
-  // its art sidecar) uses the sanitized name, not the raw FPP filename.
+/** Stored sidecar name for a media filename — mirrors ingest's safeName. */
+function sidecarStem(filename: string): string {
   const raw = filename.split(/[\\/]/).pop()!;
   let stem = raw;
   try {
     stem = decodeURIComponent(raw); // room URLs arrive percent-encoded
   } catch {}
-  stem = stem.replace(/[^\w.() \-']/g, "_");
-  const e = encodeURIComponent(stem);
+  return encodeURIComponent(stem.replace(/[^\w.() \-']/g, "_"));
+}
+
+export function artCandidates(filename: string | null | undefined): string[] {
+  if (!filename) return [];
+  const e = sidecarStem(filename);
   return [`/media/${e}.art.jpg`, `/media/${e}.art.png`];
+}
+
+export interface TrackTags {
+  title?: string;
+  artist?: string;
+  album?: string;
+}
+
+/** Embedded file tags, extracted server-side — authoritative over np fields. */
+export async function fetchTrackTags(filename: string | null | undefined): Promise<TrackTags | null> {
+  if (!filename) return null;
+  try {
+    const res = await fetch(`/media/${sidecarStem(filename)}.tags.json`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as TrackTags;
+  } catch {
+    return null;
+  }
 }
 
 export function isOnAir(np: NowPlaying | null, now = Date.now()): boolean {

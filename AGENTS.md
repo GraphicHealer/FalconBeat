@@ -28,6 +28,13 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
   `/srv/falconbeat` in the image) it also serves the SPA as a fallback —
   `/settings` is served ONLY here (Caddy 404s it on the public edge) so the
   operator UI is entirely LAN-side with same-origin PUTs.
+  Every media PUT also extracts embedded metadata into sidecars next to the
+  audio: `<name>.art.jpg|png` (ID3v2 APIC/PIC, FLAC PICTURE) and
+  `<name>.tags.json` (`{title?,artist?,album?}` — ID3v2 TIT2/TPE1/TALB, v2.2
+  TT2/TP1/TAL, FLAC Vorbis comments). Sidecars are GET-able unauthenticated
+  (Caddy serves them like audio), a re-PUT with no embedded data clears
+  them, and DELETE removes them with the file. The listener treats
+  tags.json as authoritative over the plugin's nowplaying fields.
 - `media/` — audio store on the host; Caddy serves it publicly at `/media/*`.
 - `web/` — Vite + React + TS listener SPA. Same-origin deployment: resolves
   `ws(s)://{host}/ws` and source URLs against the page origin (absolute

@@ -5,9 +5,11 @@ import {
   DEFAULT_SHOW,
   fetchNowPlaying,
   fetchShow,
+  fetchTrackTags,
   isOnAir,
   type NowPlaying,
   type ShowConfig,
+  type TrackTags,
 } from "./show";
 import Settings from "./Settings";
 
@@ -26,13 +28,6 @@ function statusLine(s: EngineState): string {
     return `Loading audio ${s.sourcesLoaded}/${s.sourcesTotal}…`;
   if (s.isPlaying) return "Playing";
   return "Listening — waiting for the show";
-}
-
-/** Prefer plugin-pushed metadata; fall back to the filename-derived title. */
-function trackTitle(np: NowPlaying | null, fallback: string | null): string {
-  if (np?.title) return np.title;
-  if (fallback) return fallback;
-  return "Nothing playing";
 }
 
 const fmt = (sec: number): string => {
@@ -63,6 +58,7 @@ function Listener() {
   const s = useSyncExternalStore(syncEngine.subscribe, syncEngine.getSnapshot);
   const [show, setShow] = useState<ShowConfig>(DEFAULT_SHOW);
   const [np, setNp] = useState<NowPlaying | null>(null);
+  const [tags, setTags] = useState<TrackTags | null>(null);
   const [progress, setProgress] = useState<{ position: number; duration: number } | null>(null);
 
   useEffect(() => {
@@ -115,10 +111,25 @@ function Listener() {
   const listening = s.joined;
   const onAir = isOnAir(np);
   // Current track: plugin metadata, else the engine's filename-derived name.
-  const trackFile = np?.filename ?? null;
-  const title = trackTitle(np, s.trackName);
-  const artist = np?.artist ?? null;
-  const album = np?.album ?? null;
+  const trackFile = np?.filename ?? s.trackUrl;
+
+  // Embedded file tags (server-side sidecar) are authoritative over the
+  // fields the plugin forwards from FPP.
+  useEffect(() => {
+    if (!trackFile) {
+      setTags(null);
+      return;
+    }
+    let alive = true;
+    void fetchTrackTags(trackFile).then((t) => alive && setTags(t));
+    return () => {
+      alive = false;
+    };
+  }, [trackFile]);
+
+  const title = tags?.title ?? np?.title ?? s.trackName ?? "Nothing playing";
+  const artist = tags?.artist ?? np?.artist ?? null;
+  const album = tags?.album ?? np?.album ?? null;
   const showInfo = show.description || show.schedule || show.location ||
     show.hostedBy || show.links.length > 0;
 
