@@ -32,6 +32,13 @@
 		file_server
 	}
 
+	# The operator settings page is LAN-only (served by ingest on :8090);
+	# don't let it resolve through the public SPA fallback.
+	@settings path /settings /settings/*
+	handle @settings {
+		respond "Not found" 404
+	}
+
 	# Everything else → the Vite SPA
 	handle {
 		root * /srv/falconbeat
