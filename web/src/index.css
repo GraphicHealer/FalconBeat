@@ -102,6 +102,53 @@ body {
   font-weight: 700;
 }
 
+.album {
+  font-size: 0.95rem;
+  color: #8b949e;
+}
+
+.offair {
+  color: #8b949e;
+  font-size: 1rem;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+}
+
+.info {
+  max-width: 26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  color: #8b949e;
+  font-size: 0.95rem;
+}
+
+.schedule {
+  color: #c9d1d9;
+  font-weight: 600;
+}
+
+.links {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.links a {
+  color: #f0b429;
+  text-decoration: none;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.links a:active {
+  background: #21262d;
+}
+
 .meta {
   display: flex;
   gap: 1.25rem;
@@ -117,5 +164,100 @@ body {
   right: 0;
   padding: 0 2rem;
   font-size: 0.8rem;
+  color: #6e7681;
+}
+
+/* ── Settings page ── */
+
+.settings {
+  justify-content: flex-start;
+  gap: 1.25rem;
+  padding-top: 3rem;
+}
+
+.settings-title {
+  font-size: clamp(1.8rem, 6vw, 2.5rem);
+}
+
+.form {
+  width: min(26rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  text-align: left;
+}
+
+.form-h {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6e7681;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: #8b949e;
+}
+
+.form input,
+.form textarea {
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+  color: #e6edf3;
+}
+
+.form input:focus,
+.form textarea:focus {
+  outline: none;
+  border-color: #f0b429;
+}
+
+.link-row {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr auto;
+  gap: 0.5rem;
+}
+
+.mini-btn {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+  color: #c9d1d9;
+  cursor: pointer;
+}
+
+.save-btn {
+  margin-top: 0.75rem;
+  font-size: 1.1rem;
+  padding: 0.8rem 2rem;
+  align-self: center;
+}
+
+.save-status {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #8b949e;
+}
+
+.hint-inline {
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.hint-inline a {
   color: #6e7681;
 }

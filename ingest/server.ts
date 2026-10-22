@@ -1,8 +1,11 @@
 /**
  * FalconBeat ingest — LAN-only audio receiver + static media server.
  *
- *   PUT  /media/<filename>   Authorization: Bearer $INGEST_TOKEN → store to MEDIA_DIR
- *   GET  /media/<filename>   serve file (dev convenience; prod GETs go through Caddy)
+ *   PUT  /media/<filename>    Authorization: Bearer $INGEST_TOKEN → store to MEDIA_DIR
+ *   PUT  /config/show         Bearer → write MEDIA_DIR/show.json (operator show config)
+ *   PUT  /config/nowplaying   Bearer → write MEDIA_DIR/nowplaying.json (plugin pushes
+ *                             per-track metadata; {playing:false} when off air)
+ *   GET  /media|/config/<n>   serve file (dev convenience; prod GETs go through Caddy)
  *   GET  /health
  *
  * The plugin then registers the file with BeatSync via POST /upload/complete
@@ -10,7 +13,7 @@
  * BeatSync stores the URL and broadcasts it — it never touches the bytes.
  *
  * Env: PORT=8090  MEDIA_DIR=./media  INGEST_TOKEN=...
- * Run: node server.ts   (Node ≥22.18, zero deps)
+ * Run: node server.ts   (Node ≥22.18, zero deps; also runs under Bun)
  */
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
@@ -28,9 +31,19 @@ const MIME: Record<string, string> = {
   ".ogg": "audio/ogg",
   ".m4a": "audio/mp4",
 };
+/** JSON docs writable via /config/<name> — show info and plugin-pushed now-playing. */
+const CONFIG_NAMES = new Set(["show", "nowplaying"]);
+
+// LAN-only service behind a Bearer token; the /settings page PUTs cross-origin
+// from the operator's browser, so permissive CORS is required and acceptable.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+};
 
 const json = (res: import("node:http").ServerResponse, code: number, body: unknown) =>
-  res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+  res.writeHead(code, { "Content-Type": "application/json", ...CORS }).end(JSON.stringify(body));
 
 /** Strip to basename + safe charset; reject non-audio extensions. */
 const safeName = (raw: string): string | null => {
@@ -38,13 +51,60 @@ const safeName = (raw: string): string | null => {
   return AUDIO_EXT.has(extname(name).toLowerCase()) ? name : null;
 };
 
+const authed = (req: import("node:http").IncomingMessage) =>
+  TOKEN.length > 0 && req.headers.authorization === `Bearer ${TOKEN}`;
+
+const readBody = async (req: import("node:http").IncomingMessage) => {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  return Buffer.concat(chunks);
+};
+
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const fileName = url.pathname.startsWith("/media/") ? url.pathname.slice("/media/".length) : null;
+  const configName = url.pathname.startsWith("/config/") ? url.pathname.slice("/config/".length) : null;
 
   try {
+    if (req.method === "OPTIONS") {
+      return res.writeHead(204, CORS).end();
+    }
+
     if (req.method === "GET" && url.pathname === "/health") {
       return json(res, 200, { status: "ok" });
+    }
+
+    // PUT /config/<show|nowplaying> — JSON doc → MEDIA_DIR/<name>.json.
+    // show.json is operator-authored (settings page or FPP plugin);
+    // nowplaying.json is pushed by the plugin on every media/stop event.
+    if (req.method === "PUT" && configName) {
+      if (!authed(req)) return json(res, 401, { error: "unauthorized" });
+      const name = basename(configName).replace(/\.json$/, "").toLowerCase();
+      if (!CONFIG_NAMES.has(name)) return json(res, 400, { error: "unknown config" });
+
+      const body = await readBody(req);
+      let doc: unknown;
+      try {
+        doc = JSON.parse(body.toString("utf8"));
+      } catch {
+        return json(res, 400, { error: "invalid JSON" });
+      }
+      if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+        return json(res, 400, { error: "config must be a JSON object" });
+      }
+      await mkdir(MEDIA_DIR, { recursive: true });
+      await writeFile(join(MEDIA_DIR, `${name}.json`), JSON.stringify(doc));
+      console.log(`PUT /config/${name}`);
+      return json(res, 200, { stored: `${name}.json` });
+    }
+
+    if (req.method === "GET" && configName) {
+      const name = basename(configName).replace(/\.json$/, "").toLowerCase();
+      if (!CONFIG_NAMES.has(name)) return json(res, 404, { error: "not found" });
+      const data = await readFile(join(MEDIA_DIR, `${name}.json`), "utf8");
+      return res
+        .writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-cache", ...CORS })
+        .end(data);
     }
 
     if (req.method === "GET" && url.pathname === "/media") {
@@ -53,16 +113,12 @@ createServer(async (req, res) => {
     }
 
     if (req.method === "PUT" && fileName) {
-      if (!TOKEN || req.headers.authorization !== `Bearer ${TOKEN}`) {
-        return json(res, 401, { error: "unauthorized" });
-      }
+      if (!authed(req)) return json(res, 401, { error: "unauthorized" });
       const safe = safeName(fileName);
       if (!safe) return json(res, 400, { error: "unsupported audio filename" });
 
-      const chunks: Buffer[] = [];
-      for await (const c of req) chunks.push(c as Buffer);
+      const bytes = await readBody(req);
       await mkdir(MEDIA_DIR, { recursive: true });
-      const bytes = Buffer.concat(chunks);
       await writeFile(join(MEDIA_DIR, safe), bytes);
       console.log(`PUT /media/${safe} (${bytes.length}B)`);
       return json(res, 200, { stored: safe, bytes: bytes.length });

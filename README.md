@@ -76,6 +76,25 @@ ingress:
 Or run cloudflared as a sidecar container — a commented-out service is in
 `deploy/docker-compose.yml` (set `CLOUDFLARED_TOKEN` in `.env`).
 
+## Show info, now-playing & listener count
+
+Two JSON docs live alongside the audio in `media/` and are served publicly at
+`/media/*.json` (no-cache — audio stays `immutable`):
+
+- **`show.json`** — what the listener page displays: `showName`, `tagline`,
+  `description`, `schedule`, `location`, `links: [{label, url}]`. Edit it from
+  any device on the LAN at `http://<docker-host>:8000/settings` (asks for the
+  ingest token, saved in the browser's localStorage). You can also edit the
+  file on the share directly.
+- **`nowplaying.json`** — pushed by the plugin on every track/stop event:
+  `{playing, title, artist, album, filename, updatedAtMs}`. The page polls it
+  every ~3s for the song title/artist and the on-air/off-air banner
+  (`updatedAtMs` stale >90s counts as off air).
+
+The listener count comes from BeatSync's `CLIENT_CHANGE` broadcast — the page
+counts connected **non-admin** clients, so the plugin's admin socket doesn't
+inflate the number.
+
 ## Plugin settings (FPP → Content Setup → FalconBeat)
 
 Each field maps to a server-side setting:
@@ -84,6 +103,10 @@ Each field maps to a server-side setting:
 |---|---|
 | BeatSync WS URL | `ws://<docker-host>:8080` |
 | Room ID | `000000` (default; arbitrary in non-demo mode). The listener page reads the same value from `?room=` — share `https://<host>/?room=<id>` if you change it |
+
+For the now-playing card the plugin should `PUT {ingestUrl}/config/nowplaying`
+(Bearer, JSON object) on each media event and `{"playing": false}` when the
+playlist stops — see "Show info, now-playing & listener count" above.
 | Creator Secret | `CREATOR_SECRET` from `deploy/.env` |
 | Ingest URL | `http://<docker-host>:8090` |
 | Ingest Token | `INGEST_TOKEN` from `deploy/.env` |

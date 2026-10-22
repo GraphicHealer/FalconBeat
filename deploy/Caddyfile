@@ -20,11 +20,15 @@
 	}
 
 	# Show audio pushed by the FPP plugin via the ingest service (LAN-only),
-	# served to phones straight from disk. Immutable per show — cache hard.
+	# served to phones straight from disk. Audio is immutable per show —
+	# cache hard. show.json/nowplaying.json change constantly — no-cache.
 	handle /media/* {
 		root * /media
 		uri strip_prefix /media
-		header Cache-Control "public, max-age=3600, immutable"
+		@json path *.json
+		header @json Cache-Control "no-cache, must-revalidate"
+		@audio not path *.json
+		header @audio Cache-Control "public, max-age=3600, immutable"
 		file_server
 	}
 

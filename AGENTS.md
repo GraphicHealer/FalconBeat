@@ -21,8 +21,9 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
   `web/src/vendor/beatsync-shared/`, fix type breaks.
 - `ingest/` — zero-dep Node service, **LAN-only** (never routed through
   cloudflared). `PUT /media/<name>` (Bearer $INGEST_TOKEN) writes to `media/`;
-  GETs serve files directly (dev convenience). Filename sanitized to basename
-  + safe charset; audio extensions only.
+  `PUT /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
+  files (dev convenience). Permissive CORS so the SPA's `/settings` page can
+  PUT cross-origin from the operator's browser on the LAN.
 - `media/` — audio store on the host; Caddy serves it publicly at `/media/*`.
 - `web/` — Vite + React + TS listener SPA. Same-origin deployment: resolves
   `ws(s)://{host}/ws` and source URLs against the page origin (absolute
@@ -53,6 +54,20 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
 
 Phones fetch `https://<host>/media/song.mp3` straight from Caddy — BeatSync
 only ever stores the URL.
+
+## Show metadata & plugin contract
+
+- `media/show.json` — operator config rendered by the listener page
+  (showName/tagline/description/schedule/location/links). Edited via
+  `PUT /config/show` — the `/settings` page in the SPA does this from the
+  operator's browser on the LAN.
+- `media/nowplaying.json` — plugin pushes `PUT /config/nowplaying` per media
+  event: `{playing, title, artist, album, filename, updatedAtMs}`, and
+  `{playing:false}` on playlist stop. Page polls every ~3s; `updatedAtMs`
+  stale >90s = off air.
+- Listener count = non-admin clients in `CLIENT_CHANGE` (plugin's creator
+  socket is isAdmin, so it doesn't count).
+- Caddy serves `/media/*.json` with `no-cache`; audio keeps `immutable`.
 
 Known noise without S3_* configured: BackupManager logs a failed backup every
 60s and on SIGTERM (which also makes shutdown fall through to Docker's SIGKILL

@@ -394,8 +394,10 @@ export class SyncEngine {
         break;
       }
       case "CLIENT_CHANGE": {
-        // Demo mode unicasts only self; listener count comes from DEMO_USER_COUNT
-        if (this.listenerCount === 0) this.listenerCount = event.clients.length;
+        // Non-demo: every join/leave rebroadcasts the full client list.
+        // Count non-admins — the plugin's admin WS (creator) and the bridge
+        // shouldn't show up as listeners.
+        this.listenerCount = event.clients.filter((c) => !c.isAdmin).length;
         this.emit();
         break;
       }
