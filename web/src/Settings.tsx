@@ -33,6 +33,10 @@ export default function Settings() {
     set({ links: cfg.links.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
 
   const save = async () => {
+    if (!token) {
+      setStatus("Enter the ingest token first — it's the INGEST_TOKEN env on the server.");
+      return;
+    }
     setStatus("Saving…");
     localStorage.setItem(LS_INGEST, ingestUrl);
     localStorage.setItem(LS_TOKEN, token);
