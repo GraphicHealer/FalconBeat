@@ -25,6 +25,15 @@ cp .env.example .env          # set CREATOR_SECRET + INGEST_TOKEN (long random s
 docker compose up -d          # pulls the CI-built image from GHCR
 ```
 
+Generate the two secrets — they must be **different** values:
+
+```bash
+openssl rand -hex 32    # → CREATOR_SECRET  (BeatSync admin WebSocket auth)
+openssl rand -hex 32    # → INGEST_TOKEN    (audio push Bearer token)
+```
+
+On Windows/PowerShell: `[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')` works too.
+
 To build locally instead of pulling: `docker compose up -d --build`.
 
 The published image is `ghcr.io/graphichealer/falconbeat` (amd64 + arm64, so it
