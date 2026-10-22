@@ -66,7 +66,10 @@ only ever stores the URL.
 - `media/nowplaying.json` — plugin pushes `PUT /config/nowplaying` per media
   event: `{playing, title, artist, album, filename, updatedAtMs}`, and
   `{playing:false}` on playlist stop. Page polls every ~3s; `updatedAtMs`
-  stale >90s = off air.
+  stale >90s = off air. Off air persisting >15s makes the page call
+  `syncEngine.leave()` — full WS+playback disconnect, back to the Listen
+  button. A missing file (plugin too old to push it) = unknown, never
+  auto-disconnects.
 - Listener count = non-admin clients in `CLIENT_CHANGE` (plugin's creator
   socket is isAdmin, so it doesn't count).
 - Caddy serves `/media/*.json` with `no-cache`; audio keeps `immutable`.

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { syncEngine, type EngineState } from "./sync/engine";
 import {
   DEFAULT_SHOW,
@@ -12,6 +12,9 @@ import Settings from "./Settings";
 
 const SHOW_REFRESH_MS = 60_000;
 const NOWPLAYING_POLL_MS = 3_000;
+// Leave the session only after off-air persists this long — brief gaps
+// between playlist tracks shouldn't kick listeners.
+const OFFAIR_LEAVE_MS = 15_000;
 
 function statusLine(s: EngineState): string {
   if (s.phase === "idle") return "";
@@ -53,6 +56,22 @@ function Listener() {
   useEffect(() => {
     document.title = show.showName || "FalconBeat";
   }, [show.showName]);
+
+  // Show ended → drop the listener session entirely (WS + playback).
+  // They can tap Listen again when the show comes back.
+  // np === null means no nowplaying.json exists — plugin may not push it,
+  // so "unknown" never triggers a disconnect.
+  const offAirSince = useRef<number | null>(null);
+  useEffect(() => {
+    if (np === null || isOnAir(np)) {
+      offAirSince.current = null;
+      return;
+    }
+    if (offAirSince.current === null) offAirSince.current = Date.now();
+    if (s.joined && Date.now() - offAirSince.current > OFFAIR_LEAVE_MS) {
+      syncEngine.leave();
+    }
+  }, [np, s.joined]);
 
   const listening = s.joined;
   const onAir = isOnAir(np);
