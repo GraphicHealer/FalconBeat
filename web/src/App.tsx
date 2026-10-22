@@ -262,8 +262,8 @@ function Listener() {
       <header className="np-top">
         <span className="np-top-side" />
         <div className="np-top-center">
-          <span className="np-top-sub">{show.tagline || "Listening live"}</span>
           <h1 className="np-top-name">{show.showName}</h1>
+          <span className="np-top-sub">{show.tagline || "Listening live"}</span>
         </div>
         <button className="np-top-btn" onClick={() => setSheetOpen(true)} aria-label="About the show">
           <InfoIcon />
