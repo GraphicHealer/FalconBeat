@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>FalconBeat</Name>
+  <Repository>ghcr.io/graphichealer/falconbeat:latest</Repository>
+  <Registry>https://github.com/GraphicHealer/FalconBeat/pkgs/container/falconbeat</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/GraphicHealer/FalconBeat/issues</Support>
+  <Project>https://github.com/GraphicHealer/FalconBeat</Project>
+  <Overview>Synced light-show audio for Falcon Player (FPP). Visitors open a webpage on their phones and hear the show audio in sync with the lights. Requires the fpp-plugin-FalconBeat plugin on your FPP controller, and a Cloudflare Tunnel (or equivalent HTTPS ingress) pointed at the WebUI port for public access.</Overview>
+  <Category>MediaApp:Other Network:Other</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/GraphicHealer/FalconBeat/main/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>1792530000</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="80" Default="8000" Mode="tcp" Description="Public edge port — point cloudflared here (listener page, /media audio, /ws WebSocket proxy)" Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="BeatSync Admin/API Port" Target="8080" Default="8080" Mode="tcp" Description="LAN ONLY — plugin admin WebSocket + upload/complete. Do NOT expose to the internet" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Ingest Port" Target="8090" Default="8090" Mode="tcp" Description="LAN ONLY — plugin pushes audio files here. Do NOT expose to the internet" Type="Port" Display="always" Required="true" Mask="false">8090</Config>
+  <Config Name="Media Directory" Target="/media" Default="/mnt/user/appdata/falconbeat/media" Mode="rw" Description="Show audio pushed by the FPP plugin lands here; Caddy serves it at /media/*" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/falconbeat/media</Config>
+  <Config Name="Creator Secret" Target="CREATOR_SECRET" Default="" Mode="" Description="Admin auth for the FPP plugin's admin WebSocket (?creator=). Long random string. Paste the same value into the plugin's Creator Secret field" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Ingest Token" Target="INGEST_TOKEN" Default="" Mode="" Description="Bearer token for audio PUTs from the FPP plugin. Long random string. Paste the same value into the plugin's Ingest Token field" Type="Variable" Display="always" Required="true" Mask="true"/>
+</Container>
