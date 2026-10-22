@@ -559,16 +559,22 @@ export class SyncEngine {
 
   private schedulePause(targetServerTime: number): void {
     const waitSec = this.waitSeconds(targetServerTime);
-    if (this.currentSource) {
+    const node = this.currentSource;
+    if (node) {
       try {
-        this.currentSource.stop(audioEngine.getCurrentTime() + waitSec);
+        node.stop(audioEngine.getCurrentTime() + waitSec);
       } catch {}
     }
-    // Reflect the pending stop in UI immediately; isPlaying flips when it fires
+    // Reflect the pending stop in UI immediately; isPlaying flips when it
+    // fires — but only if no newer track has taken over currentSource in
+    // the meantime (a pause between playlist songs must not clobber the
+    // next track's state).
     window.setTimeout(() => {
-      this.isPlaying = false;
-      this.currentSource = null;
-      this.emit();
+      if (this.currentSource === node) {
+        this.isPlaying = false;
+        this.currentSource = null;
+        this.emit();
+      }
     }, waitSec * 1000);
     this.emit();
   }
