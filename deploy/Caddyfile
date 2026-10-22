@@ -39,10 +39,17 @@
 		respond "Not found" 404
 	}
 
-	# Everything else → the Vite SPA
+	# Everything else → the Vite SPA. index.html must always revalidate so a
+	# new image actually reaches browsers (the JS/CSS are content-hashed, so
+	# /assets/* can cache hard forever — a stale index.html is the only file
+	# that can strand a visitor on an old build).
 	handle {
 		root * /srv/falconbeat
 		try_files {path} /index.html
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@html not path /assets/*
+		header @html Cache-Control "no-cache, must-revalidate"
 		file_server
 	}
 }

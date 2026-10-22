@@ -22,6 +22,7 @@
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile, readdir, stat, unlink } from "node:fs/promises";
 import { basename, extname, join, normalize, resolve, sep } from "node:path";
+import { inflateSync } from "node:zlib";
 
 const PORT = Number(process.env.PORT ?? 8090);
 const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? "./media");
@@ -81,13 +82,6 @@ const deunsync = (d: Buffer): Buffer => {
   return Buffer.from(out);
 };
 
-const picExt = (mimeOrFmt: string): string | null => {
-  const m = mimeOrFmt.toLowerCase();
-  if (m.includes("png")) return ".png";
-  if (m.includes("jpeg") || m.includes("jpg")) return ".jpg";
-  return null;
-};
-
 /** Skip an encoded description field; returns offset of the image data. */
 const skipDesc = (f: Buffer, start: number, enc: number): number => {
   let p = start;
@@ -101,18 +95,28 @@ const skipDesc = (f: Buffer, start: number, enc: number): number => {
 
 const apicData = (f: Buffer, v22: boolean): { ext: string; data: Buffer } | null => {
   const enc = f[0] ?? 0;
+  let off: number;
   if (v22) {
-    const ext = picExt(f.toString("latin1", 1, 4));
-    if (!ext) return null;
-    const off = skipDesc(f, 5, enc); // enc + fmt(3) + picType
-    return off < f.length ? { ext, data: f.subarray(off) } : null;
+    off = skipDesc(f, 5, enc); // enc + fmt(3) + picType
+  } else {
+    const mimeEnd = f.indexOf(0, 1);
+    if (mimeEnd < 0) return null;
+    off = skipDesc(f, mimeEnd + 2, enc); // mime + nul + picType
   }
-  const mimeEnd = f.indexOf(0, 1);
-  if (mimeEnd < 0) return null;
-  const ext = picExt(f.toString("latin1", 1, mimeEnd));
-  if (!ext) return null;
-  const off = skipDesc(f, mimeEnd + 2, enc); // mime + nul + picType
-  return off < f.length ? { ext, data: f.subarray(off) } : null;
+  if (off >= f.length) return null;
+  const data = f.subarray(off);
+  // Trust the image's magic bytes over the declared mime — taggers
+  // routinely label PNG art as image/jpeg (and browsers don't always
+  // sniff). If neither magic matches, the payload isn't a usable
+  // image (compressed/linked/garbage) → no sidecar at all.
+  const ext = sniffImage(data);
+  return ext ? { ext, data } : null;
+};
+
+const sniffImage = (b: Buffer): string | null => {
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return ".jpg";
+  if (b.length > 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return ".png";
+  return null;
 };
 
 interface TagData {
@@ -173,6 +177,24 @@ const id3TagData = (buf: Buffer): TagData => {
       if ((major === 3 && (flags & 0x80) !== 0) || (major === 4 && (fflags & 0x0002) !== 0)) {
         f = deunsync(f);
       }
+      // v2.3: 0x40 = encrypted, 0x80 = compressed (4B orig-len prefix + zlib).
+      // v2.4: 0x04 = encrypted, 0x08 = compressed, 0x01 = data-length-indicator.
+      const encrypted = major === 3 ? fflags & 0x0040 : fflags & 0x0004;
+      if (encrypted) {
+        pos += 10 + size;
+        continue; // can't decrypt — skip frame
+      }
+      const compressed = major === 3 ? fflags & 0x0080 : fflags & 0x0008;
+      if (compressed) {
+        try {
+          f = Buffer.from(inflateSync(f.subarray(4))); // always has a DLI prefix
+        } catch {
+          pos += 10 + size;
+          continue;
+        }
+      } else if (major === 4 && (fflags & 0x0001)) {
+        f = f.subarray(4); // DLI without compression
+      }
       if (id === "APIC" && !out.art) out.art = apicData(f, false) ?? undefined;
       const key = TEXT_FRAMES[id];
       if (key && !out.tags?.[key]) {
@@ -196,11 +218,14 @@ const flacTagData = (buf: Buffer): TagData => {
     if (type === 6 && pos + len <= buf.length) { // PICTURE
       const b = buf.subarray(pos, pos + len);
       const mimeLen = b.readUInt32BE(0);
-      const ext = picExt(b.toString("latin1", 4, 4 + mimeLen)) ?? ".jpg";
       const descLen = b.readUInt32BE(4 + mimeLen);
       const off = 4 + mimeLen + 4 + descLen + 20; // +w/h/depth/colors +dataLen
       const dataLen = b.readUInt32BE(off - 4);
-      if (off + dataLen <= b.length) out.art = { ext, data: b.subarray(off, off + dataLen) };
+      if (off + dataLen <= b.length) {
+        const data = b.subarray(off, off + dataLen);
+        const ext = sniffImage(data);
+        if (ext) out.art = { ext, data };
+      }
     }
     if (type === 4 && pos + len <= buf.length) { // VORBIS_COMMENT
       const b = buf.subarray(pos, pos + len);
