@@ -2,6 +2,8 @@
  * FalconBeat ingest — LAN-only audio receiver + static media server.
  *
  *   PUT  /media/<filename>    Authorization: Bearer $INGEST_TOKEN → store to MEDIA_DIR
+ *   DELETE /media/<filename>  Bearer → remove from MEDIA_DIR (plugin evicts
+ *                             played tracks so the volume doesn't fill up)
  *   PUT  /config/show         Bearer → write MEDIA_DIR/show.json (operator show config)
  *   PUT  /config/nowplaying   Bearer → write MEDIA_DIR/nowplaying.json (plugin pushes
  *                             per-track metadata; {playing:false} when off air)
@@ -18,7 +20,7 @@
  * Run: node server.ts   (Node ≥22.18, zero deps; also runs under Bun)
  */
 import { createServer } from "node:http";
-import { mkdir, readFile, writeFile, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, stat, unlink } from "node:fs/promises";
 import { basename, extname, join, normalize, resolve, sep } from "node:path";
 
 const PORT = Number(process.env.PORT ?? 8090);
@@ -52,7 +54,7 @@ const CONFIG_NAMES = new Set(["show", "nowplaying"]);
 // from the operator's browser, so permissive CORS is required and acceptable.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
@@ -136,6 +138,21 @@ createServer(async (req, res) => {
       await writeFile(join(MEDIA_DIR, safe), bytes);
       console.log(`PUT /media/${safe} (${bytes.length}B)`);
       return json(res, 200, { stored: safe, bytes: bytes.length });
+    }
+
+    // DELETE /media/<name> — the plugin drops played tracks off disk when it
+    // evicts them from the room queue. Idempotent: a missing file is a no-op.
+    if (req.method === "DELETE" && fileName) {
+      if (!authed(req)) return json(res, 401, { error: "unauthorized" });
+      const safe = safeName(fileName);
+      if (!safe) return json(res, 400, { error: "unsupported audio filename" });
+      try {
+        await unlink(join(MEDIA_DIR, safe));
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      }
+      console.log(`DELETE /media/${safe}`);
+      return json(res, 200, { deleted: safe });
     }
 
     if ((req.method === "GET" || req.method === "HEAD") && fileName) {

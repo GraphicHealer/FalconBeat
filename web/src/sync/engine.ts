@@ -378,8 +378,16 @@ export class SyncEngine {
   private onRoomEvent(event: Extract<WSResponseType, { type: "ROOM_EVENT" }>["event"]): void {
     switch (event.type) {
       case "SET_AUDIO_SOURCES": {
+        const live = new Set(event.sources.map((s) => s.url));
         for (const s of event.sources) {
           if (!this.sources.has(s.url)) this.sources.set(s.url, { url: s.url, status: "idle" });
+        }
+        // The plugin evicts played tracks from the room — drop their decoded
+        // buffers too, or a long show accumulates every song in memory. The
+        // currently-playing source keeps its entry (the buffer is alive in
+        // the playing node regardless).
+        for (const url of [...this.sources.keys()]) {
+          if (!live.has(url) && url !== this.currentUrl) this.sources.delete(url);
         }
         if (this.joined) this.loadAllSources();
         this.emit();

@@ -21,7 +21,9 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
   `web/src/vendor/beatsync-shared/`, fix type breaks.
 - `ingest/` — zero-dep Node service, **LAN-only** (never routed through
   cloudflared). `PUT /media/<name>` (Bearer $INGEST_TOKEN) writes to `media/`;
-  `PUT /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
+  `DELETE /media/<name>` (Bearer) removes it — the plugin evicts played
+  tracks off disk when it drops them from the room. Idempotent (missing
+  file → 200). `PUT /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
   files (dev convenience). With `WEB_DIST` set (to the Vite build output,
   `/srv/falconbeat` in the image) it also serves the SPA as a fallback —
   `/settings` is served ONLY here (Caddy 404s it on the public edge) so the
