@@ -83,6 +83,10 @@ export default function Settings() {
           <input value={cfg.tagline ?? ""} onChange={(e) => set({ tagline: e.target.value })} />
         </label>
         <label>
+          Hosted by (optional)
+          <input value={cfg.hostedBy ?? ""} onChange={(e) => set({ hostedBy: e.target.value })} placeholder="The Smith Family" />
+        </label>
+        <label>
           Description
           <textarea rows={3} value={cfg.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
         </label>

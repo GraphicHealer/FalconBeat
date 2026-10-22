@@ -28,6 +28,8 @@ export interface EngineState {
   joined: boolean;
   isPlaying: boolean;
   trackName: string | null;
+  /** Raw registered URL of the playing source (for art sidecar lookup) */
+  trackUrl: string | null;
   listenerCount: number;
   sourcesLoaded: number;
   sourcesTotal: number;
@@ -614,6 +616,7 @@ export class SyncEngine {
       joined: this.joined,
       isPlaying: this.isPlaying,
       trackName: this.currentUrl ? displayName(this.currentUrl) : null,
+      trackUrl: this.currentUrl,
       listenerCount: this.listenerCount,
       sourcesLoaded: loaded,
       sourcesTotal: this.sources.size,

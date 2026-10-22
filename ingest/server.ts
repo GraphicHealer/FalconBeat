@@ -42,6 +42,8 @@ const STATIC_MIME: Record<string, string> = {
   ".css": "text/css",
   ".json": "application/json",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
   ".woff": "font/woff",
@@ -60,6 +62,128 @@ const CORS = {
 
 const json = (res: import("node:http").ServerResponse, code: number, body: unknown) =>
   res.writeHead(code, { "Content-Type": "application/json", ...CORS }).end(JSON.stringify(body));
+
+// ── Embedded cover-art extraction ────────────────────────────────────
+// On PUT, pull the first picture out of the file and store it as a
+// sidecar: <name>.art.jpg|png — the listener page shows it as album art.
+// MP3: ID3v2 APIC (v2.3/v2.4) or PIC (v2.2) frame. FLAC: PICTURE block.
+
+const syncsafe = (buf: Buffer, o: number) =>
+  ((buf[o] & 0x7f) << 21) | ((buf[o + 1] & 0x7f) << 14) |
+  ((buf[o + 2] & 0x7f) << 7) | (buf[o + 3] & 0x7f);
+
+const deunsync = (d: Buffer): Buffer => {
+  const out: number[] = [];
+  for (let i = 0; i < d.length; i++) {
+    out.push(d[i]);
+    if (d[i] === 0xff && d[i + 1] === 0x00) i++;
+  }
+  return Buffer.from(out);
+};
+
+const picExt = (mimeOrFmt: string): string | null => {
+  const m = mimeOrFmt.toLowerCase();
+  if (m.includes("png")) return ".png";
+  if (m.includes("jpeg") || m.includes("jpg")) return ".jpg";
+  return null;
+};
+
+/** Skip an encoded description field; returns offset of the image data. */
+const skipDesc = (f: Buffer, start: number, enc: number): number => {
+  let p = start;
+  if (enc === 1 || enc === 2) { // UTF-16: double-null terminated
+    while (p + 1 < f.length && !(f[p] === 0 && f[p + 1] === 0)) p += 2;
+    return p + 2;
+  }
+  while (p < f.length && f[p] !== 0) p++;
+  return p + 1;
+};
+
+const apicData = (f: Buffer, v22: boolean): { ext: string; data: Buffer } | null => {
+  const enc = f[0] ?? 0;
+  if (v22) {
+    const ext = picExt(f.toString("latin1", 1, 4));
+    if (!ext) return null;
+    const off = skipDesc(f, 5, enc); // enc + fmt(3) + picType
+    return off < f.length ? { ext, data: f.subarray(off) } : null;
+  }
+  const mimeEnd = f.indexOf(0, 1);
+  if (mimeEnd < 0) return null;
+  const ext = picExt(f.toString("latin1", 1, mimeEnd));
+  if (!ext) return null;
+  const off = skipDesc(f, mimeEnd + 2, enc); // mime + nul + picType
+  return off < f.length ? { ext, data: f.subarray(off) } : null;
+};
+
+const id3Art = (buf: Buffer): { ext: string; data: Buffer } | null => {
+  const major = buf[3];
+  const flags = buf[5];
+  const tagEnd = Math.min(10 + syncsafe(buf, 6) + (flags & 0x10 ? 10 : 0), buf.length);
+  let pos = 10;
+  if (flags & 0x40 && pos + 4 <= tagEnd) { // extended header
+    pos += major === 4 ? syncsafe(buf, pos) : buf.readUInt32BE(pos) + 4;
+  }
+  while (pos < tagEnd) {
+    if (major === 2) {
+      if (pos + 6 > tagEnd) break;
+      const id = buf.toString("latin1", pos, pos + 3);
+      if (!/^[A-Z0-9]{3}$/.test(id)) break;
+      const size = (buf[pos + 3] << 16) | (buf[pos + 4] << 8) | buf[pos + 5];
+      if (id === "PIC") {
+        let f = buf.subarray(pos + 6, pos + 6 + size);
+        if (flags & 0x80) f = deunsync(f);
+        return apicData(f, true);
+      }
+      pos += 6 + size;
+    } else {
+      if (pos + 10 > tagEnd) break;
+      const id = buf.toString("latin1", pos, pos + 4);
+      if (!/^[A-Z0-9]{4}$/.test(id)) break;
+      const size = major === 4 ? syncsafe(buf, pos + 4) : buf.readUInt32BE(pos + 4);
+      const fflags = buf.readUInt16BE(pos + 8);
+      if (id === "APIC") {
+        let f = buf.subarray(pos + 10, pos + 10 + size);
+        if ((major === 3 && (flags & 0x80) !== 0) || (major === 4 && (fflags & 0x0002) !== 0)) {
+          f = deunsync(f);
+        }
+        return apicData(f, false);
+      }
+      pos += 10 + size;
+    }
+  }
+  return null;
+};
+
+const flacArt = (buf: Buffer): { ext: string; data: Buffer } | null => {
+  let pos = 4; // past "fLaC"
+  while (pos + 4 <= buf.length) {
+    const last = (buf[pos] & 0x80) !== 0;
+    const type = buf[pos] & 0x7f;
+    const len = (buf[pos + 1] << 16) | (buf[pos + 2] << 8) | buf[pos + 3];
+    pos += 4;
+    if (type === 6 && pos + len <= buf.length) { // PICTURE
+      const b = buf.subarray(pos, pos + len);
+      const mimeLen = b.readUInt32BE(0);
+      const ext = picExt(b.toString("latin1", 4, 4 + mimeLen)) ?? ".jpg";
+      const descLen = b.readUInt32BE(4 + mimeLen);
+      const off = 4 + mimeLen + 4 + descLen + 20; // +w/h/depth/colors +dataLen
+      const dataLen = b.readUInt32BE(off - 4);
+      return off + dataLen <= b.length ? { ext, data: b.subarray(off, off + dataLen) } : null;
+    }
+    pos += len;
+    if (last) break;
+  }
+  return null;
+};
+
+const extractArt = (buf: Buffer): { ext: string; data: Buffer } | null => {
+  if (buf.length > 10 && buf.toString("latin1", 0, 3) === "ID3") return id3Art(buf);
+  if (buf.length > 4 && buf.toString("latin1", 0, 4) === "fLaC") return flacArt(buf);
+  return null;
+};
+
+/** Sidecar candidates for an audio file — written on PUT, removed on DELETE. */
+const artSidecars = (safe: string) => [`${safe}.art.jpg`, `${safe}.art.png`];
 
 /** Strip to basename + safe charset; reject non-audio extensions. */
 const safeName = (raw: string): string | null => {
@@ -136,6 +260,18 @@ createServer(async (req, res) => {
       const bytes = await readBody(req);
       await mkdir(MEDIA_DIR, { recursive: true });
       await writeFile(join(MEDIA_DIR, safe), bytes);
+      // Embedded cover art → sidecar file the listener page displays.
+      // Clear stale sidecars of the other format first (a re-uploaded file
+      // may carry different art).
+      const art = extractArt(bytes);
+      for (const side of artSidecars(safe)) {
+        if (art && side === `${safe}.art${art.ext}`) {
+          await writeFile(join(MEDIA_DIR, side), art.data);
+          console.log(`  art → ${side} (${art.data.length}B)`);
+        } else {
+          await unlink(join(MEDIA_DIR, side)).catch(() => {});
+        }
+      }
       console.log(`PUT /media/${safe} (${bytes.length}B)`);
       return json(res, 200, { stored: safe, bytes: bytes.length });
     }
@@ -148,6 +284,9 @@ createServer(async (req, res) => {
       if (!safe) return json(res, 400, { error: "unsupported audio filename" });
       try {
         await unlink(join(MEDIA_DIR, safe));
+        for (const side of artSidecars(safe)) {
+          await unlink(join(MEDIA_DIR, side)).catch(() => {});
+        }
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
@@ -157,13 +296,20 @@ createServer(async (req, res) => {
 
     if ((req.method === "GET" || req.method === "HEAD") && fileName) {
       const safe = safeName(fileName);
-      if (!safe) return json(res, 404, { error: "not found" });
-      const file = join(MEDIA_DIR, safe);
+      // Art sidecars aren't audio — match <audio-file>.art.jpg|png directly.
+      const artRaw = basename(decodeURIComponent(fileName));
+      const artSafe = /\.art\.(jpe?g|png)$/i.test(artRaw) && !/[^\w.() \-']/.test(artRaw)
+        ? artRaw
+        : null;
+      if (!safe && !artSafe) return json(res, 404, { error: "not found" });
+      const name = safe ?? artSafe!;
+      const file = join(MEDIA_DIR, name);
+      const mime = (artSafe ? STATIC_MIME : MIME)[extname(name).toLowerCase()] ?? "application/octet-stream";
       if (req.method === "HEAD") {
         const s = await stat(file);
         return res
           .writeHead(200, {
-            "Content-Type": MIME[extname(safe).toLowerCase()],
+            "Content-Type": mime,
             "Content-Length": s.size,
             "Cache-Control": "public, max-age=3600, immutable",
           })
@@ -172,7 +318,7 @@ createServer(async (req, res) => {
       const data = await readFile(file);
       res
         .writeHead(200, {
-          "Content-Type": MIME[extname(safe).toLowerCase()],
+          "Content-Type": mime,
           "Content-Length": data.length,
           "Cache-Control": "public, max-age=3600, immutable",
         })

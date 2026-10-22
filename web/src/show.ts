@@ -16,6 +16,8 @@ export interface ShowLink {
 export interface ShowConfig {
   showName: string;
   tagline?: string;
+  /** Who runs the show — "Hosted by the Smith Family" */
+  hostedBy?: string;
   description?: string;
   schedule?: string;
   location?: string;
@@ -60,6 +62,24 @@ export async function fetchNowPlaying(): Promise<NowPlaying | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Album-art sidecar URLs for a media filename, best guess first.
+ * Ingest extracts embedded art on upload to <file>.art.jpg|png; try both.
+ */
+export function artCandidates(filename: string | null | undefined): string[] {
+  if (!filename) return [];
+  // Mirror ingest's safeName: basename + safe charset — the stored file (and
+  // its art sidecar) uses the sanitized name, not the raw FPP filename.
+  const raw = filename.split(/[\\/]/).pop()!;
+  let stem = raw;
+  try {
+    stem = decodeURIComponent(raw); // room URLs arrive percent-encoded
+  } catch {}
+  stem = stem.replace(/[^\w.() \-']/g, "_");
+  const e = encodeURIComponent(stem);
+  return [`/media/${e}.art.jpg`, `/media/${e}.art.png`];
 }
 
 export function isOnAir(np: NowPlaying | null, now = Date.now()): boolean {

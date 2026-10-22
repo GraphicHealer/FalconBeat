@@ -62,9 +62,14 @@ only ever stores the URL.
 ## Show metadata & plugin contract
 
 - `media/show.json` — operator config rendered by the listener page
-  (showName/tagline/description/schedule/location/links). Edited via
+  (showName/tagline/hostedBy/description/schedule/location/links). Edited via
   `PUT /config/show` — the `/settings` page in the SPA does this from the
   operator's browser on the LAN.
+- `media/<file>.art.jpg|png` — cover-art sidecars. Ingest extracts embedded
+  art on PUT (ID3v2 APIC/PIC, FLAC PICTURE) and deletes them on DELETE.
+  The listener page derives candidates from nowplaying.filename /
+  trackUrl — must decodeURIComponent + apply the same sanitize as
+  safeName (`[^\w.() \-']` → `_`).
 - `media/nowplaying.json` — plugin pushes `PUT /config/nowplaying` per media
   event: `{playing, title, artist, album, filename, updatedAtMs}`, and
   `{playing:false}` on playlist stop. Page polls every ~3s; `updatedAtMs`
