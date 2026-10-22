@@ -4,7 +4,7 @@ name: ci
 # version releases — see docker.yml.
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 concurrency:
