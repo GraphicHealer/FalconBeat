@@ -46,7 +46,6 @@ jobs:
             type=semver,pattern={{version}}                      # 1.2.3
             type=semver,pattern={{major}}.{{minor}}              # 1.2
             type=semver,pattern={{major}}                        # 1
-            type=sha,prefix=sha-                                 # sha-abc1234
             type=raw,value=latest                                # releases are latest
 
       - uses: docker/build-push-action@v6
