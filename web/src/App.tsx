@@ -140,7 +140,9 @@ function Listener() {
   const grabStart = (e: PointerEvent<HTMLDivElement>) => {
     const el = sheetRef.current;
     if (!el) return;
-    el.setPointerCapture(e.pointerId);
+    // Capture on the grab element itself — the move/up handlers live here,
+    // and pointer events retarget to whichever element holds the capture.
+    e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { y0: e.clientY, open0: sheetOpen, moved: false };
     setDragY(sheetOpen ? 0 : el.offsetHeight - SHEET_PEEK_PX);
   };

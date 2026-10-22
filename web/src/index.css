@@ -28,7 +28,8 @@ body {
   flex-direction: column;
   max-width: 30rem;
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 1.25rem 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 1.25rem
+    calc(env(safe-area-inset-bottom, 0px) + 100px); /* keeps controls above the sheet peek */
   overflow: hidden;
   background: #0a0e14;
   background: linear-gradient(
@@ -61,7 +62,7 @@ body {
   color: #8b949e;
 }
 .np-top-name {
-  font-size: 1.05rem;
+  font-size: 2rem;
   font-weight: 800;
   letter-spacing: 0.01em;
   white-space: nowrap;
