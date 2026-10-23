@@ -52,7 +52,7 @@ To build locally instead of pulling: `docker compose up -d --build`.
 
 The published image is `ghcr.io/graphichealer/falconbeat` (amd64 + arm64),
 built by `.github/workflows/docker.yml` on every GitHub **release** — tags like
-`0.4.4`, `0.4`, `latest`. Verify it's up:
+`0.5.11`, `0.5`, `latest`. Verify it's up:
 
 ```bash
 curl http://localhost:8000/health    # {"status":"ok"} through the edge
@@ -92,33 +92,54 @@ Or run cloudflared as a sidecar container — a commented-out service is in
 
 ## Plugin settings (FPP → Input/Output Setup → FalconBeat)
 
+**Connection:**
+
 | Plugin field | Value |
 |---|---|
-| FalconBeat URL | `http://<docker-host>:8000` — the one published port; the plugin derives the WebSocket address from it |
-| Token | `FALCONBEAT_TOKEN` from `deploy/.env` — the single shared secret |
-| Extra Delay (ms) | `0` = auto; manual nudge added to the computed schedule delay |
-| Sync Gate (sec) | Hold each track's start until devices confirm loaded — `10` default, `0` = off. This is what makes FPP and the devices start on the same tick |
-| FPP Start Lag (ms) | `250` default — how long FPP takes to actually start media after the gate releases; tune by ear |
-| Preload Settle (ms) | `2500` default — when a track is pushed at play time, wait this long before PLAY so devices can download over WAN. Counts against the gate; `0` = off |
-| Disconnect grace (s) | how long the admin socket is held after playlist stop |
+| Server (LAN) | `http://<docker-host>:8000` — the one published port; the plugin derives the WebSocket address from it |
+| Server Token | `FALCONBEAT_TOKEN` from `deploy/.env` — the single shared secret |
+
+**Show Info** — what visitors see (pushed to the server on every change):
+
+| Plugin field | Value |
+|---|---|
+| Show Name | Defaults to FPP's HostName |
+| Tagline | Defaults to FPP's HostDescription |
+| Hosted By / Schedule / Location | Shown in the Show Info sheet |
+| Description | A paragraph about the show (custom multiline row) |
+| Links | One per line: `Label = https://url` — rendered as pills |
+| Public Listener URL | The https address visitors open — feeds the **Signage QR** at the bottom of the settings page |
+
+**Sync tuning** (defaults are sane — don't touch unless timing is off):
+
+| Plugin field | Value |
+|---|---|
+| Sync Offset | Manual offset added to the track position sent to devices |
+| Sync Gate | Hold each track's start until devices confirm loaded — `10`s default, `0` = off. This is what makes FPP and the devices start on the same tick |
+| Preload Settle | `2500`ms default — when a track is pushed at play time, wait this long before PLAY so devices can download over WAN. Counts against the gate; `0` = off |
+| Extra Delay | `0` = auto; manual nudge added to the computed schedule delay |
+| Disconnect grace | How long the admin socket is held after playlist stop |
 
 ## The listener page
 
-A fullscreen now-playing view: album art (extracted from each audio file's
-embedded tags — no external APIs), title/artist/album, live progress, a big
-play button, share button, "Up next" label, listener count, and an
-About-the-show bottom sheet filled from `media/show.json`. The page
-publishes Media Session metadata, so Android/iOS show the track in the
-notification shade and lockscreen with working pause buttons.
+A fullscreen now-playing view: the show name and tagline up top, big album
+art (extracted from each audio file's embedded tags — no external APIs),
+title/artist/album with a LIVE badge, a progress bar, share + play/pause
+controls, an "Up next" card, listener count, and a live spectrum
+visualization tinted by the album art behind it all. A **Show Info** sheet
+peeks up from the bottom edge — drag it open for the hosted-by, schedule,
+location, description, and links pushed from the FPP plugin.
 
-When the show goes off air for ~15s, joined listeners disconnect back to the
-play button and can tap in again when the show resumes.
+The page publishes Media Session metadata, so Android/iOS show the track in
+the notification shade and lockscreen with working pause buttons.
 
-**Show info is configured in the FPP plugin** (Input/Output Setup →
-FalconBeat): show name, tagline, hosted-by, schedule, location, description,
-links (`Label = URL`, one per line), and the public listener URL. The plugin
-pushes it to `media/show.json` on every settings change — there is no web
-settings page. Defaults come from FPP's HostName/HostDescription.
+When the show goes off air the display clears within a few seconds; if it
+stays off air ~15s, joined listeners disconnect back to the play button and
+can tap in again when the show resumes.
+
+**Show info is configured in the FPP plugin** — the plugin pushes it to
+`media/show.json` on every settings change. There is no web settings page;
+the FPP plugin is the single source of truth.
 
 ## Media lifecycle
 
