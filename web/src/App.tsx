@@ -170,14 +170,6 @@ function ShareIcon() {
   );
 }
 
-function InfoIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8v.01" />
-    </svg>
-  );
-}
-
 function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <div className="info-row">
@@ -490,7 +482,7 @@ function Listener() {
       {/* ── Live spectrum background (silence when nothing is playing) ── */}
       <EqBackground />
 
-      {/* ── Top bar: show identity + about toggle ── */}
+      {/* ── Top bar: show identity (mirrored spacer keeps title centered) ── */}
       <header className="np-top">
         <span className="np-top-side np-version">
           {import.meta.env.VITE_APP_VERSION !== "dev" ? import.meta.env.VITE_APP_VERSION : ""}
@@ -499,9 +491,7 @@ function Listener() {
           <h1 className="np-top-name">{show.showName}</h1>
           <span className="np-top-sub">{show.tagline || "Listening live"}</span>
         </div>
-        <button className="np-top-btn" onClick={() => setSheetOpen(true)} aria-label="Show info">
-          <InfoIcon />
-        </button>
+        <span className="np-top-side" aria-hidden />
       </header>
 
       {/* ── Album art ── */}
