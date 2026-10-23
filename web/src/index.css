@@ -45,13 +45,16 @@ body {
 }
 
 /* Spectrum bars behind the page — tinted with the album art. Bottom edge
-   sits at the Show Info peek's top edge so quiet bars stay visible. */
+   sits at the Show Info peek's top edge so quiet bars stay visible.
+   NOTE: <canvas> is a replaced element — top/bottom alone won't stretch it
+   (it keeps its intrinsic height and bottom gets ignored), so the height
+   must be given explicitly. */
 .eq-bg {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 84px; /* SHEET_PEEK_PX */
+  height: calc(100% - 84px); /* 100% - SHEET_PEEK_PX */
   width: 100%;
   pointer-events: none;
   opacity: 0.22;
