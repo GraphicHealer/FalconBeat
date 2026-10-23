@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { syncEngine, type EngineState } from "./sync/engine";
 import {
   artCandidates,
@@ -133,6 +133,50 @@ function InfoIcon() {
   return (
     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8v.01" />
+    </svg>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="info-row">
+      <span className="info-icon">{icon}</span>
+      <div className="info-text">
+        <span className="info-label">{label}</span>
+        <span className="info-value">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function HostIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="8" r="4" /><path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
+function ExternalIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M14 4h6v6" /><path d="M20 4l-9 9" /><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" />
     </svg>
   );
 }
@@ -362,7 +406,7 @@ function Listener() {
           <h1 className="np-top-name">{show.showName}</h1>
           <span className="np-top-sub">{show.tagline || "Listening live"}</span>
         </div>
-        <button className="np-top-btn" onClick={() => setSheetOpen(true)} aria-label="About the show">
+        <button className="np-top-btn" onClick={() => setSheetOpen(true)} aria-label="Show info">
           <InfoIcon />
         </button>
       </header>
@@ -434,14 +478,14 @@ function Listener() {
               : "Tap play to listen in sync with the lights."}
       </p>
 
-      {/* ── About the show — draggable bottom sheet ── */}
+      {/* ── Show info — draggable bottom sheet ── */}
       {sheetOpen && <div className="sheet-backdrop" onClick={() => setSheetOpen(false)} />}
       <div
         ref={sheetRef}
         className={`sheet${sheetOpen ? " open" : ""}${dragY !== null ? " dragging" : ""}`}
         style={dragY !== null ? { transform: `translateY(${dragY}px)` } : undefined}
         role="dialog"
-        aria-label="About the show"
+        aria-label="Show info"
       >
         <div
           className="sheet-grab"
@@ -452,25 +496,38 @@ function Listener() {
         >
           <div className="grabber" aria-hidden />
           <div className="sheet-peek">
-            <span className="sheet-chip">⚡ About the Show</span>
+            <span className="sheet-chip">Show Info</span>
             {show.hostedBy && <span className="sheet-peek-sub">{show.hostedBy}</span>}
           </div>
         </div>
         <div className="sheet-body">
-          {show.hostedBy && <p className="info-line"><b>Hosted by</b> {show.hostedBy}</p>}
-          {show.schedule && <p className="info-line"><b>Schedule</b> {show.schedule}</p>}
-          {show.location && <p className="info-line"><b>Location</b> {show.location}</p>}
+          <div className="sheet-head">
+            <h2 className="sheet-title">{show.showName}</h2>
+            {show.tagline && <p className="sheet-tagline">{show.tagline}</p>}
+          </div>
+          {(show.hostedBy || show.schedule || show.location) && (
+            <div className="info-card">
+              {show.hostedBy && <InfoRow icon={<HostIcon />} label="Hosted by" value={show.hostedBy} />}
+              {show.schedule && <InfoRow icon={<ClockIcon />} label="Schedule" value={show.schedule} />}
+              {show.location && <InfoRow icon={<PinIcon />} label="Location" value={show.location} />}
+            </div>
+          )}
           {show.description && <p className="desc">{show.description}</p>}
           {show.links.length > 0 && (
-            <p className="links">
+            <div className="links">
               {show.links.map((l, i) => (
                 <a key={i} href={l.url} target="_blank" rel="noreferrer">
+                  <ExternalIcon />
                   {l.label || l.url}
                 </a>
               ))}
+            </div>
+          )}
+          {!showInfo && (
+            <p className="sheet-empty">
+              No show details yet — the operator can add them in settings.
             </p>
           )}
-          {!showInfo && <p className="info-line">No show details yet — the operator can add them in settings.</p>}
         </div>
       </div>
     </main>
