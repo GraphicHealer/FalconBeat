@@ -216,10 +216,10 @@ body {
   left: calc(50% + 2.9rem); /* just right of the 4.25rem play button */
   right: 0;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   gap: 0.1rem;
-  text-align: left;
+  text-align: center;
   overflow: hidden;
 }
 .np-next small {
