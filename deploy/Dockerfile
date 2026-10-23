@@ -32,11 +32,14 @@ RUN bun run build
 
 # ── Stage 3: Vite SPA build ──────────────────────────────────────────
 FROM node:24-alpine AS web-build
+# Release tag baked into the page (shown tiny in the top bar); "dev" for
+# local builds where no version is passed.
+ARG APP_VERSION=dev
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
-RUN npm run build
+RUN VITE_APP_VERSION=$APP_VERSION npm run build
 
 # ── Stage 4: runtime — bun runs beatsync + ingest; caddy is a static binary ──
 FROM oven/bun:1-slim
