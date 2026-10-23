@@ -482,16 +482,12 @@ function Listener() {
       {/* ── Live spectrum background (silence when nothing is playing) ── */}
       <EqBackground />
 
-      {/* ── Top bar: show identity (mirrored spacer keeps title centered) ── */}
+      {/* ── Top bar: show identity ── */}
       <header className="np-top">
-        <span className="np-top-side np-version">
-          {import.meta.env.VITE_APP_VERSION !== "dev" ? import.meta.env.VITE_APP_VERSION : ""}
-        </span>
         <div className="np-top-center">
           <h1 className="np-top-name">{show.showName}</h1>
           <span className="np-top-sub">{show.tagline || "Listening live"}</span>
         </div>
-        <span className="np-top-side" aria-hidden />
       </header>
 
       {/* ── Album art ── */}
@@ -608,6 +604,19 @@ function Listener() {
               plugin settings.
             </p>
           )}
+          <div className="sheet-footer">
+            Powered by{" "}
+            <a
+              href="https://github.com/GraphicHealer/FalconBeat"
+              target="_blank"
+              rel="noreferrer"
+            >
+              FalconBeat
+            </a>
+            {import.meta.env.VITE_APP_VERSION !== "dev"
+              ? ` ${import.meta.env.VITE_APP_VERSION}`
+              : ""}
+          </div>
         </div>
       </div>
     </main>

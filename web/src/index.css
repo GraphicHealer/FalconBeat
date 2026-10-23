@@ -74,22 +74,6 @@ body {
   margin-top: 1.5rem; /* breathing room below the status bar edge */
   min-height: 3rem;
 }
-.np-top-side {
-  width: 2.5rem;
-}
-.np-version {
-  font-size: 0.55rem;
-  color: #8b949e;
-  overflow: hidden;
-  white-space: nowrap;
-  text-align: center;
-  align-self: flex-start;
-  margin-top: 0.15rem;
-  padding: 0.2rem 0.45rem;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-}
 .np-top-center {
   flex: 1;
   text-align: center;
@@ -442,6 +426,17 @@ body {
 }
 .links a:active {
   background: #21262d;
+}
+.sheet-footer {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.65rem;
+  color: #6e7681;
+}
+.sheet-footer a {
+  color: #8b949e;
+  text-decoration: none;
+  font-weight: 600;
 }
 
 .dot {
