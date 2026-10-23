@@ -187,10 +187,12 @@ body {
   align-items: center;
   justify-content: center;
 }
-/* Share pinned far left; up-next starts just right of the centered play. */
+/* Share centered in the space left of the play button; up-next starts
+   just right of it. */
 .np-controls > .np-icon {
   position: absolute;
-  left: 0;
+  left: calc(25% - 1.06rem); /* midpoint of left edge → play's left edge */
+  transform: translateX(-50%);
 }
 .np-icon {
   border: none;
