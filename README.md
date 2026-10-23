@@ -17,6 +17,7 @@ driven by the companion plugin
 
 <p align="center">
   <img src="screenshot.png" alt="FalconBeat listener page — fullscreen now-playing view" width="320" />
+  <img src="screenshot2.png" alt="Show Info sheet — hosted-by, schedule, and description" width="320" />
 </p>
 
 ## Requirements
