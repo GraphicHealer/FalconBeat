@@ -46,10 +46,9 @@ ingest/upload routes the plugin uses. BeatSync's `:8080` and ingest's
 The container must be on the **same LAN** as your FPP controller — the
 plugin reaches it directly, no tunnel.
 
-The show-settings page (name, schedule, links — what visitors see) is at
-`http://<unraid-ip>:8000/settings` — LAN addresses only; tunneled visitors
-get a 404. It'll ask for the FalconBeat Token once and remember it in the
-browser.
+Show info (name, schedule, links — what visitors see) is configured in the
+FPP plugin settings (Input/Output Setup → FalconBeat); the plugin pushes it
+to the server as `show.json` whenever the settings change.
 
 ## Public ingress
 

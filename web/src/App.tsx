@@ -12,7 +12,6 @@ import {
   type ShowConfig,
   type TrackTags,
 } from "./show";
-import Settings from "./Settings";
 
 const SHOW_REFRESH_MS = 60_000;
 const NOWPLAYING_POLL_MS = 3_000;
@@ -615,7 +614,8 @@ function Listener() {
           )}
           {!showInfo && (
             <p className="sheet-empty">
-              No show details yet — the operator can add them in settings.
+              No show details yet — the operator can add them in the FPP
+              plugin settings.
             </p>
           )}
         </div>
@@ -625,7 +625,5 @@ function Listener() {
 }
 
 export default function App() {
-  // No router dep — /settings is the operator page, everything else is the listener.
-  if (location.pathname === "/settings") return <Settings />;
   return <Listener />;
 }

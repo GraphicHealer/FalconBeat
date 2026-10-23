@@ -4,7 +4,7 @@
 #   ingest    (Bun)  — file push + config PUTs on :8090 (container-internal)
 #   caddy            — the only published port, :80, routes everything:
 #                      public /ws + /media GETs, Bearer-gated /upload/complete,
-#                      ingest writes, LAN-gated /settings.
+#                      ingest writes.
 # First child to exit brings the container down so the restart policy
 # resurrects the whole unit rather than leaving a half-dead box.
 set -u

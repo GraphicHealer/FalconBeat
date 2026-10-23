@@ -1,7 +1,8 @@
 /**
  * Show metadata — two JSON docs that live in the media dir alongside audio.
  *
- *   /media/show.json        operator-authored via /settings (or the plugin)
+ *   /media/show.json        pushed by the FPP plugin (operator config lives
+ *                           in the plugin settings — no web settings page)
  *   /media/nowplaying.json  pushed by the FPP plugin on every media/stop event
  *
  * Both are publicly readable — they only contain info the page displays anyway.

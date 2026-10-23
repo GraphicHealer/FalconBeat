@@ -4,20 +4,10 @@
 #                the endpoint itself is unauthenticated inside BeatSync)
 #   token-gated (by ingest): PUT/DELETE /media/*, PUT /config/* — proxied
 #                publicly, ingest enforces the Bearer token
-#   LAN-only: /settings (client_ip must be private — see trusted_proxies)
 # Ports 8080/8090 stay inside the container — nothing else is published.
 #
 # The listener page resolves ws(s)://{host}/ws same-origin. Audio URLs are
 # registered relative (/media/...) so devices fetch them same-origin too.
-
-{
-	# Honor X-Forwarded-For only when the direct peer is private (cloudflared
-	# runs on this host/docker net). Without this, client_ip would see every
-	# tunnel visitor as a private docker address — i.e. "LAN".
-	servers {
-		trusted_proxies static private_ranges
-	}
-}
 
 :80 {
 	encode gzip
@@ -46,22 +36,13 @@
 	}
 
 	# Ingest writes — token-authed by ingest itself, so safe to expose.
-	# OPTIONS is proxied for the settings page's CORS preflight.
+	# (Show info is configured in the FPP plugin and PUT to /config/show;
+	# there is no web settings page.)
 	@ingestWrite {
 		path /media/* /config/*
 		method PUT DELETE OPTIONS
 	}
 	handle @ingestWrite {
-		reverse_proxy {$INGEST_UPSTREAM:localhost:8090}
-	}
-
-	# Operator settings page — LAN only: open http://<host>:<port>/settings.
-	# client_ip is XFF-aware via trusted_proxies, so tunnel visitors (a public
-	# forwarded IP) get 404 while LAN browsers are proxied to ingest's SPA.
-	@settings path /settings /settings/*
-	handle @settings {
-		@public not client_ip private_ranges
-		respond @public "Not found" 404
 		reverse_proxy {$INGEST_UPSTREAM:localhost:8090}
 	}
 

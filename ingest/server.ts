@@ -10,7 +10,7 @@
  *   GET  /media|/config/<n>   serve file (dev convenience; prod GETs go through Caddy)
  *   GET  /health
  *   GET  /*                   SPA fallback → WEB_DIST (optional; serves the listener
- *                             page + /settings on the LAN port, same-origin PUTs)
+ *                             page on the LAN port, same-origin PUTs)
  *
  * The plugin then registers the file with BeatSync via POST /upload/complete
  * {roomId, originalName, publicUrl} where publicUrl = MEDIA_PUBLIC_URL/media/<name>.
@@ -53,8 +53,8 @@ const STATIC_MIME: Record<string, string> = {
 /** JSON docs writable via /config/<name> — show info and plugin-pushed now-playing. */
 const CONFIG_NAMES = new Set(["show", "nowplaying"]);
 
-// LAN-only service behind a Bearer token; the /settings page PUTs cross-origin
-// from the operator's browser, so permissive CORS is required and acceptable.
+// LAN-only service behind a Bearer token; PUTs come from the FPP plugin and
+// the bridge CLI, so permissive CORS is required and acceptable.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
@@ -289,7 +289,7 @@ createServer(async (req, res) => {
     }
 
     // PUT /config/<show|nowplaying> — JSON doc → MEDIA_DIR/<name>.json.
-    // show.json is operator-authored (settings page or FPP plugin);
+    // show.json is pushed by the FPP plugin (operator config lives there);
     // nowplaying.json is pushed by the plugin on every media/stop event.
     if (req.method === "PUT" && configName) {
       if (!authed(req)) return json(res, 401, { error: "unauthorized" });
@@ -403,8 +403,8 @@ createServer(async (req, res) => {
       return;
     }
 
-    // SPA fallback — serves the listener page + /settings on this LAN port
-    // when WEB_DIST points at the Vite build output. Same-origin /config PUTs.
+    // SPA fallback — serves the listener page on this LAN port when WEB_DIST
+    // points at the Vite build output. Same-origin /config PUTs.
     if (WEB_DIST && (req.method === "GET" || req.method === "HEAD")) {
       const rel = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, "");
       let file = join(WEB_DIST, rel);
@@ -413,7 +413,7 @@ createServer(async (req, res) => {
       }
       const s = await stat(file).catch(() => null);
       if (!s?.isFile()) {
-        file = join(WEB_DIST, "index.html"); // client-side routes, e.g. /settings
+        file = join(WEB_DIST, "index.html"); // SPA fallback
       }
       const data = await readFile(file);
       return res

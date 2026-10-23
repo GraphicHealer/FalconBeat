@@ -28,9 +28,6 @@ same-origin, so there's no public-hostname setting).
   /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
   files (dev convenience). Writes are proxied through the Caddy edge —
   ingest's own Bearer check is the auth, so public exposure is fine.
-  `/settings` is LAN-only via a `client_ip private_ranges` matcher (honors
-  XFF from trusted proxies — cloudflared runs on the host/docker net, so
-  tunnel visitors show their real IP and get 404).
   Every media PUT also extracts embedded metadata into sidecars next to the
   audio: `<name>.art.jpg|png` (ID3v2 APIC/PIC, FLAC PICTURE) and
   `<name>.tags.json` (`{title?,artist?,album?}` — ID3v2 TIT2/TPE1/TALB, v2.2
@@ -55,9 +52,7 @@ same-origin, so there's no public-hostname setting).
   + `/discover` are Bearer-gated by Caddy (`Authorization: Bearer
   $FALCONBEAT_TOKEN` — the endpoints have no auth of their own), ingest
   writes (`PUT/DELETE /media/*`, `PUT /config/*`, `OPTIONS`) proxy to
-  ingest which enforces the Bearer itself, and `/settings` proxies to
-  ingest only for `client_ip private_ranges` (`trusted_proxies
-  private_ranges` makes client_ip honor XFF from the local cloudflared).
+  ingest which enforces the Bearer itself.
   `{$BEATSYNC_UPSTREAM}`/`{$INGEST_UPSTREAM}` also work split across
   containers.
   One shared secret: `FALCONBEAT_TOKEN` in .env feeds ingest Bearer,
@@ -82,9 +77,11 @@ BeatSync only ever stores the URL.
 ## Show metadata & plugin contract
 
 - `media/show.json` — operator config rendered by the listener page
-  (showName/tagline/hostedBy/description/schedule/location/links). Edited via
-  `PUT /config/show` — the `/settings` page in the SPA does this from the
-  operator's browser on the LAN.
+  (showName/tagline/hostedBy/description/schedule/location/links/publicUrl).
+  Pushed by the FPP plugin via `PUT /config/show` — FPP plugin settings are
+  the single source of truth (there is no web settings page); the daemon
+  re-renders and re-pushes on every settings change, defaulting name/tagline
+  to FPP's HostName/HostDescription.
 - `media/<file>.art.jpg|png` — cover-art sidecars. Ingest extracts embedded
   art on PUT (ID3v2 APIC/PIC, FLAC PICTURE) and deletes them on DELETE.
   The listener page derives candidates from nowplaying.filename /

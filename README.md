@@ -62,15 +62,14 @@ One container runs everything: BeatSync (Bun), the ingest service, and
 Caddy — and **one published port** carries it all. Caddy routes by path and
 method: listeners get the page, `/ws`, and `/media` audio; the plugin
 reaches its admin socket, `/upload/complete`, and ingest writes through the
-same port with the token as a Bearer gate. `/settings` answers only to LAN
-addresses. BeatSync's `:8080` and ingest's `:8090` stay inside the
-container — nothing else is published.
+same port with the token as a Bearer gate. BeatSync's `:8080` and ingest's
+`:8090` stay inside the container — nothing else is published.
 
 ### Ports
 
 | Port | Exposure | Purpose |
 |---|---|---|
-| `8000 → 80` | tunnel target **and** the plugin's URL | Listener page, `/media` audio, `/ws` WebSocket, token-gated ingest writes + `/upload/complete`, LAN-only `/settings` |
+| `8000 → 80` | tunnel target **and** the plugin's URL | Listener page, `/media` audio, `/ws` WebSocket, token-gated ingest writes + `/upload/complete` |
 
 ## Public ingress (cloudflared)
 
@@ -107,16 +106,18 @@ Or run cloudflared as a sidecar container — a commented-out service is in
 A fullscreen now-playing view: album art (extracted from each audio file's
 embedded tags — no external APIs), title/artist/album, live progress, a big
 play button, share button, "Up next" label, listener count, and an
-About-the-show bottom sheet you fill in from the settings page. The page
+About-the-show bottom sheet filled from `media/show.json`. The page
 publishes Media Session metadata, so Android/iOS show the track in the
 notification shade and lockscreen with working pause buttons.
 
 When the show goes off air for ~15s, joined listeners disconnect back to the
 play button and can tap in again when the show resumes.
 
-**Operator settings** live on the LAN only: `http://<docker-host>:8000/settings`
-— show name, tagline, hosted-by, schedule, location, description, links. Saved
-to `media/show.json` (the edge 404s `/settings` for non-LAN addresses).
+**Show info is configured in the FPP plugin** (Input/Output Setup →
+FalconBeat): show name, tagline, hosted-by, schedule, location, description,
+links (`Label = URL`, one per line), and the public listener URL. The plugin
+pushes it to `media/show.json` on every settings change — there is no web
+settings page. Defaults come from FPP's HostName/HostDescription.
 
 ## Media lifecycle
 
@@ -176,9 +177,7 @@ See `AGENTS.md` for the protocol details, timing math, and operational quirks.
 - `/upload/complete` and `/discover` are unauthenticated inside BeatSync —
   the Caddyfile Bearer-gates them; keep `FALCONBEAT_TOKEN` strong since the
   gate is the only thing between them and the public internet. Ingest
-  writes are token-protected by ingest itself. `/settings` is protected by
-  LAN-address matching only — fine for a form, but that's the one route a
-  misconfigured `trusted_proxies` could leak.
+  writes are token-protected by ingest itself.
 - BeatSync's S3 backup/restore is disabled in the image (no R2 in this
   deployment); room state is in-memory by design.
 
