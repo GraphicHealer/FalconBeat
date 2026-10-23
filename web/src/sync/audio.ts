@@ -212,7 +212,9 @@ class AudioEngine {
     this.analyser.fftSize = 128;
     this.analyser.smoothingTimeConstant = 0.8;
     // Widen the dB window so loud passages don't pin every bar to the top.
-    this.analyser.minDecibels = -85;
+    // Floor sits above the -80dB Bluetooth keepalive so it can't lift the
+    // baseline — real music is far louder than -70dB.
+    this.analyser.minDecibels = -70;
     this.analyser.maxDecibels = -10;
     this.masterGain.connect(this.analyser);
 
