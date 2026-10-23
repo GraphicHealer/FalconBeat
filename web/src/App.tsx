@@ -132,7 +132,9 @@ function EqBackground() {
       for (let i = 0; i < bars; i++) {
         let v = 0;
         for (let j = 0; j < step; j++) v = Math.max(v, bins[i * step + j]);
-        const bh = (v / 255) * h * 0.75;
+        // sqrt expands low levels and softens the top; capped well below
+        // the canvas edge so peaks never visibly clip.
+        const bh = Math.sqrt(v / 255) * h * 0.55;
         ctx.fillRect(i * bw + bw * 0.18, h - bh, bw * 0.64, bh);
       }
     };

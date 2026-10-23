@@ -211,6 +211,9 @@ class AudioEngine {
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 128;
     this.analyser.smoothingTimeConstant = 0.8;
+    // Widen the dB window so loud passages don't pin every bar to the top.
+    this.analyser.minDecibels = -85;
+    this.analyser.maxDecibels = -10;
     this.masterGain.connect(this.analyser);
 
     // Browsers only surface OS-level media controls (Android shade/lockscreen,
