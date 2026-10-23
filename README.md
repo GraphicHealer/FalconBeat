@@ -15,6 +15,10 @@ Device-side sync is powered by [BeatSync](https://github.com/freeman-jiang/beats
 driven by the companion plugin
 **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer/fpp-plugin-FalconBeat)**.
 
+<p align="center">
+  <img src="screenshot.png" alt="FalconBeat listener page — fullscreen now-playing view" width="320" />
+</p>
+
 ## Requirements
 
 - A Docker host on the **same LAN as the FPP controller** — any Linux box,
