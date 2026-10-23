@@ -109,6 +109,14 @@ blocks, re-check the sed still lands (grep `!IS_DEMO_MODE` in index.ts after
 a submodule bump). Residual S3 noise: one caught `Room cleanup failed` line
 per 60s-idle room deletion — room is still removed from memory regardless.
 
+A second build-time patch in the same stage relaxes `UploadCompleteSchema`'s
+`publicUrl` from `z.string().url()` to `z.string()` in
+`packages/shared/types/HTTPRequest.ts` — the plugin registers path-only
+`/media/<name>` URLs that listeners resolve same-origin, which upstream's
+absolute-URL validation would 400. Re-check after submodule bumps (grep
+`publicUrl: z.string().url()` in that file — UploadUrlResponseSchema keeps
+the strict check, only the request schema is relaxed).
+
 Room→source bindings are in-memory only: a server/container restart forgets
 registered tracks even though the files persist in media/. The plugin must
 re-run push (or at least upload/complete) after any restart — cheap since

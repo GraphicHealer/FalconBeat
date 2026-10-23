@@ -27,6 +27,10 @@ COPY beatsync/apps/server/src ./apps/server/src
 RUN sed -i 's/if (!IS_DEMO_MODE) {/if (false) {/' apps/server/src/index.ts
 COPY beatsync/apps/server/tsconfig.json ./apps/server/tsconfig.json
 COPY beatsync/packages/shared ./packages/shared
+# FalconBeat: the plugin registers path-only publicUrl (/media/<name>) so
+# listeners resolve it against whichever origin they arrived on — upstream
+# insists on an absolute URL. The route is Bearer-gated at the edge anyway.
+RUN sed -i '/UploadCompleteSchema = z.object/,/^});/s/\.url()//' packages/shared/types/HTTPRequest.ts
 WORKDIR /bs/apps/server
 RUN bun run build
 
