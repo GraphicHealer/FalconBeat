@@ -243,8 +243,10 @@ function Listener() {
   const showInfo = show.description || show.schedule || show.location ||
     show.hostedBy || show.links.length > 0;
 
-  // Up-next: plugin pushes the next filename; prefer its embedded tags
-  // (the lookahead push usually means the sidecar already exists).
+  // Up-next: plugin pushes the next filename; prefer its embedded tags.
+  // The lookahead push may still be uploading when np.next first appears,
+  // so retry a few times until the sidecar lands (or the file proves
+  // untagged — then the filename stays the fallback).
   const [nextTags, setNextTags] = useState<TrackTags | null>(null);
   useEffect(() => {
     if (!np?.next) {
@@ -252,9 +254,18 @@ function Listener() {
       return;
     }
     let alive = true;
-    void fetchTrackTags(np.next).then((t) => alive && setNextTags(t));
+    let tries = 0;
+    const load = () =>
+      void fetchTrackTags(np.next).then((t) => {
+        if (!alive) return;
+        setNextTags(t);
+        if (t || ++tries >= 4) clearInterval(retry);
+      });
+    load();
+    const retry = setInterval(load, 5000);
     return () => {
       alive = false;
+      clearInterval(retry);
     };
   }, [np?.next]);
   const nextTitle = np?.next
@@ -366,6 +377,7 @@ function Listener() {
             <>
               <small>Up next</small>
               <span className="np-next-title">{nextTitle}</span>
+              {nextTags?.artist && <span className="np-next-artist">{nextTags.artist}</span>}
             </>
           )}
           {!nextTitle && listening && s.listenerCount > 0 && `${s.listenerCount} listening`}

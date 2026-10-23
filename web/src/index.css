@@ -196,11 +196,16 @@ body {
   border-radius: 50%;
 }
 .np-next {
+  flex: 1;
+  min-width: 0;
+  width: auto;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 0.1rem;
   text-align: left;
   overflow: hidden;
+  padding-left: 0.5rem;
 }
 .np-next small {
   font-size: 0.6rem;
@@ -208,8 +213,17 @@ body {
   text-transform: uppercase;
 }
 .np-next-title {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: #c9d1d9;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+}
+.np-next-artist {
+  font-size: 0.7rem;
+  color: #8b949e;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
