@@ -105,7 +105,11 @@ export async function pushAudio(cfg: BridgeConfig, filePath: string): Promise<st
 
     const completeRes = await fetch(`${httpBase(cfg)}/upload/complete`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // The edge gates /upload/complete on the shared token.
+        Authorization: `Bearer ${cfg.ingestToken}`,
+      },
       body: JSON.stringify({ roomId: cfg.roomId, originalName: fileName, publicUrl }),
     });
     if (!completeRes.ok) {
@@ -155,7 +159,10 @@ export async function uploadAudio(cfg: BridgeConfig, filePath: string): Promise<
 
     const completeRes = await fetch(`${httpBase(cfg)}/upload/complete`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.ingestToken}`,
+      },
       body: JSON.stringify({ roomId: cfg.roomId, originalName: fileName, publicUrl }),
     });
     if (!completeRes.ok) {
@@ -183,7 +190,9 @@ export interface DiscoveredRoom {
 
 /** Current playback state for our room, or null if nothing is playing. */
 export async function fetchPlaybackState(cfg: BridgeConfig): Promise<DiscoveredRoom | null> {
-  const res = await fetch(`${httpBase(cfg)}/discover`);
+  const res = await fetch(`${httpBase(cfg)}/discover`, {
+    headers: { Authorization: `Bearer ${cfg.ingestToken}` },
+  });
   if (!res.ok) throw new Error(`/discover → HTTP ${res.status}`);
   const rooms = (await res.json()) as DiscoveredRoom[];
   return rooms.find((r) => r.roomId === cfg.roomId) ?? null;

@@ -1,13 +1,14 @@
 # FalconBeat — single container: BeatSync (Bun) + ingest (Bun) + Caddy.
 #
-#   cp .env.example .env   # set CREATOR_SECRET + INGEST_TOKEN
+#   cp .env.example .env   # set FALCONBEAT_TOKEN
 #   docker compose -f deploy/docker-compose.yml up -d --build
 #
-# Audio flow (no S3): FPP plugin PUTs files to ingest (:8090, LAN-only) →
-# registers the public URL via POST /upload/complete (:8080, LAN-only) →
-# Caddy serves /media/* to devices through the tunnel. BeatSync stores
-# URLs, not bytes. Keep the plugin's admin WS connected — a room idle
-# >60s is deleted.
+# One published port carries everything — Caddy routes it: devices get the
+# page + /ws + /media audio; the plugin reaches /ws, /upload/complete, and
+# ingest PUTs through the same port (Bearer-gated). BeatSync :8080 and
+# ingest :8090 stay inside the container. BeatSync stores URLs, not bytes;
+# audio is pushed to ingest and served from the media volume.
+# Keep the plugin's admin WS connected — a room idle >60s is deleted.
 
 services:
   falconbeat:
@@ -20,14 +21,13 @@ services:
     pull_policy: missing
     restart: unless-stopped
     env_file: .env
-    # CREATOR_SECRET — admin auth for plugin/bridge (?creator=), LAN-side
-    # INGEST_TOKEN   — Bearer token for PUT /media/*
+    # FALCONBEAT_TOKEN — the one shared secret: plugin admin auth (?creator=),
+    #   ingest Bearer, /upload/complete gate. Legacy INGEST_TOKEN /
+    #   CREATOR_SECRET still work as overrides.
     volumes:
       - ../media:/media        # audio store: ingest writes, Caddy serves
     ports:
-      - "8000:80"     # cloudflared ingress target: http://localhost:8000
-      - "8080:8080"   # LAN only: plugin admin WS + upload/complete
-      - "8090:8090"   # LAN only: ingest PUTs — never route through cloudflared
+      - "8000:80"     # the only port: cloudflared + plugin both point here
 
   # Optional: cloudflared as a sidecar instead of a host daemon.
   # cloudflared:

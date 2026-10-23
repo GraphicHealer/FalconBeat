@@ -4,18 +4,15 @@ import { DEFAULT_SHOW, fetchShow, type ShowConfig, type ShowLink } from "./show"
 const LS_INGEST = "falconbeat.ingestUrl";
 const LS_TOKEN = "falconbeat.ingestToken";
 
-// On :8090 the page is served BY ingest — same-origin PUTs, nothing to configure.
-const defaultIngest = () =>
-  localStorage.getItem(LS_INGEST) ??
-  (location.port === "8090"
-    ? location.origin
-    : `${location.protocol}//${location.hostname}:8090`);
+// /settings is only reachable on the LAN (the edge 404s it for public
+// visitors), and the edge proxies /config PUTs to ingest — so same-origin
+// is always the right ingest endpoint.
+const defaultIngest = () => localStorage.getItem(LS_INGEST) ?? location.origin;
 
 /**
- * Operator settings page (/settings). Edits show.json via the LAN-only ingest
- * service — open it on the show network at http://falconbeat-host:8090/settings
- * (served by ingest itself, same-origin PUTs). The token is stored in this
- * browser's localStorage.
+ * Operator settings page (/settings). Edits show.json via ingest — open it
+ * on the show network at http://falconbeat-host:<port>/settings. The token
+ * is stored in this browser's localStorage.
  */
 export default function Settings() {
   const [ingestUrl, setIngestUrl] = useState(defaultIngest);
@@ -34,7 +31,7 @@ export default function Settings() {
 
   const save = async () => {
     if (!token) {
-      setStatus("Enter the ingest token first — it's the INGEST_TOKEN env on the server.");
+      setStatus("Enter the token first — it's the FALCONBEAT_TOKEN env on the server.");
       return;
     }
     setStatus("Saving…");
@@ -63,13 +60,13 @@ export default function Settings() {
       </header>
 
       <section className="form">
-        <h2 className="form-h">Ingest connection</h2>
+        <h2 className="form-h">Server connection</h2>
         <label>
-          Ingest URL
-          <input value={ingestUrl} onChange={(e) => setIngestUrl(e.target.value)} placeholder="http://falconbeat-host:8090" />
+          Server URL
+          <input value={ingestUrl} onChange={(e) => setIngestUrl(e.target.value)} placeholder="http://falconbeat-host:8000" />
         </label>
         <label>
-          Ingest token
+          Token
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" />
         </label>
 

@@ -4,9 +4,11 @@ Synced light-show audio: visitors' devices play show audio in tight sync, trigge
 Falcon Player (FPP). Built on a self-hosted, **unmodified** BeatSync server
 (`beatsync/` submodule) + custom Vite listener page (`web/`) + admin control client
 (`bridge/` — protocol reference; the real plugin lives at
-github.com/GraphicHealer/fpp-plugin-FalconBeat, settings map 1:1 to server env:
-beatsyncUrl→:8080, ingestUrl→:8090, creatorSecret→CREATOR_SECRET,
-ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM_ID).
+github.com/GraphicHealer/fpp-plugin-FalconBeat). Plugin settings collapse to a
+single FalconBeat URL (the published edge port) + a single token
+(→`FALCONBEAT_TOKEN`) + timing knobs; room is hardcoded `000000` and media
+URLs are registered relative (`/media/<name>` — the listener resolves them
+same-origin, so there's no public-hostname setting).
 
 ## Architecture
 
@@ -19,15 +21,16 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
   a fully static playlist — it cannot accept runtime uploads.
   Update flow: bump submodule SHA, re-copy `packages/shared` into
   `web/src/vendor/beatsync-shared/`, fix type breaks.
-- `ingest/` — zero-dep Node service, **LAN-only** (never routed through
-  cloudflared). `PUT /media/<name>` (Bearer $INGEST_TOKEN) writes to `media/`;
-  `DELETE /media/<name>` (Bearer) removes it — the plugin evicts played
-  tracks off disk when it drops them from the room. Idempotent (missing
-  file → 200). `PUT /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
-  files (dev convenience). With `WEB_DIST` set (to the Vite build output,
-  `/srv/falconbeat` in the image) it also serves the SPA as a fallback —
-  `/settings` is served ONLY here (Caddy 404s it on the public edge) so the
-  operator UI is entirely LAN-side with same-origin PUTs.
+- `ingest/` — zero-dep Node service. `PUT /media/<name>` (Bearer
+  $FALCONBEAT_TOKEN) writes to `media/`; `DELETE /media/<name>` (Bearer)
+  removes it — the plugin evicts played tracks off disk when it drops them
+  from the room. Idempotent (missing file → 200). `PUT
+  /config/<show|nowplaying>` (Bearer) writes `<name>.json`; GETs serve
+  files (dev convenience). Writes are proxied through the Caddy edge —
+  ingest's own Bearer check is the auth, so public exposure is fine.
+  `/settings` is LAN-only via a `client_ip private_ranges` matcher (honors
+  XFF from trusted proxies — cloudflared runs on the host/docker net, so
+  tunnel visitors show their real IP and get 404).
   Every media PUT also extracts embedded metadata into sidecars next to the
   audio: `<name>.art.jpg|png` (ID3v2 APIC/PIC, FLAC PICTURE) and
   `<name>.tags.json` (`{title?,artist?,album?}` — ID3v2 TIT2/TPE1/TALB, v2.2
@@ -46,25 +49,35 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
   compose + cloudflared config. Single container runs three processes:
   beatsync (Bun, :8080), ingest (Bun, :8090), Caddy (:80) — entrypoint.sh
   kills the container if any child dies so the restart policy heals it.
-  Public ingress: cloudflared → Caddy → `web/dist` + `/media/*` from
-  `media/` + proxy `/ws`,`/health` → beatsync on localhost. Admin WS +
-  ingest stay LAN-only (secrets never cross Cloudflare). Caddyfile's
-  `{$BEATSYNC_UPSTREAM:localhost:8080}` also works split across containers.
-  Alternative shape (if ever needed): three separate services — beatsync
-  from `beatsync/Dockerfile`, ingest on node:24-alpine, Caddy with
-  `BEATSYNC_UPSTREAM=beatsync:8080`.
+  **Only Caddy's :80 is published** — one port carries everything:
+  cloudflared → Caddy → `web/dist` + `GET /media/*` + `/ws`,`/health` →
+  beatsync. Plugin traffic comes through the same port: `/upload/complete`
+  + `/discover` are Bearer-gated by Caddy (`Authorization: Bearer
+  $FALCONBEAT_TOKEN` — the endpoints have no auth of their own), ingest
+  writes (`PUT/DELETE /media/*`, `PUT /config/*`, `OPTIONS`) proxy to
+  ingest which enforces the Bearer itself, and `/settings` proxies to
+  ingest only for `client_ip private_ranges` (`trusted_proxies
+  private_ranges` makes client_ip honor XFF from the local cloudflared).
+  `{$BEATSYNC_UPSTREAM}`/`{$INGEST_UPSTREAM}` also work split across
+  containers.
+  One shared secret: `FALCONBEAT_TOKEN` in .env feeds ingest Bearer,
+  BeatSync `?creator=`, and the Caddy admin-route gate. Legacy
+  `INGEST_TOKEN`/`CREATOR_SECRET` still work as per-gate overrides.
 
 ## Audio push flow (no S3)
 
-1. Plugin `PUT http://falconbeat-host:8090/media/song.mp3` (Bearer token) →
+1. Plugin `PUT http://falconbeat-host:<edge>/media/song.mp3` (Bearer) →
    file lands in `media/`
-2. Plugin `POST http://beatsync:8080/upload/complete`
-   `{roomId, originalName, publicUrl: "https://<host>/media/song.mp3"}` →
+2. Plugin `POST http://falconbeat-host:<edge>/upload/complete` (Bearer —
+   gated in Caddy since the upstream endpoint is unauthenticated)
+   `{roomId, originalName, publicUrl: "/media/song.mp3"}` →
    room gets the source, devices preload it
-3. Plugin WS: `{type:"PLAY", audioSource: publicUrl, trackTimeSeconds: pos}`
+3. Plugin WS `ws://falconbeat-host:<edge>/ws?...&creator=<token>`:
+   `{type:"PLAY", audioSource: publicUrl, trackTimeSeconds: pos}`
 
-Devices fetch `https://<host>/media/song.mp3` straight from Caddy — BeatSync
-only ever stores the URL.
+Devices fetch `/media/song.mp3` from their own origin — relative URLs mean
+the same room registration works for LAN and tunneled listeners alike.
+BeatSync only ever stores the URL.
 
 ## Show metadata & plugin contract
 
@@ -101,9 +114,12 @@ registered tracks even though the files persist in media/. The plugin must
 re-run push (or at least upload/complete) after any restart — cheap since
 the files are already on disk.
 
-/upload/complete is intentionally NOT proxied by Caddy — it's unauthenticated,
-so it must stay LAN-only. The plugin talks to beatsync:8080 directly for both
-admin WS and HTTP; only browsers go through Caddy (ws://host/ws).
+/upload/complete + /discover are proxied through Caddy but Bearer-gated
+($FALCONBEAT_TOKEN checked in the Caddyfile) — the upstream endpoints have
+no auth of their own, so the gate is what keeps the single-port model safe.
+The plugin sends `Authorization: Bearer <token>` on both and hits the same
+published port for admin WS and HTTP; only browsers + plugin go through
+Caddy. BeatSync :8080 and ingest :8090 are never published.
 
 ## Hard-won protocol facts (verified against server source @ 94c38ab)
 

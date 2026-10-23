@@ -1,13 +1,29 @@
-# FalconBeat edge: static SPA + media + proxy to BeatSync on one origin.
-# The listener page resolves ws(s)://{host}/ws same-origin — no CORS, no
-# NEXT_PUBLIC_* env. Audio URLs registered with BeatSync are absolute
-# (https://{host}/media/...) so phones fetch them straight from Caddy —
-# the BeatSync server never touches audio bytes.
+# FalconBeat edge — ONE published port carries everything:
+#   public:  SPA, GET /media/*, /ws WebSocket, /health
+#   token-gated: POST /upload/complete (Bearer $FALCONBEAT_TOKEN checked here;
+#                the endpoint itself is unauthenticated inside BeatSync)
+#   token-gated (by ingest): PUT/DELETE /media/*, PUT /config/* — proxied
+#                publicly, ingest enforces the Bearer token
+#   LAN-only: /settings (client_ip must be private — see trusted_proxies)
+# Ports 8080/8090 stay inside the container — nothing else is published.
+#
+# The listener page resolves ws(s)://{host}/ws same-origin. Audio URLs are
+# registered relative (/media/...) so devices fetch them same-origin too.
+
+{
+	# Honor X-Forwarded-For only when the direct peer is private (cloudflared
+	# runs on this host/docker net). Without this, client_ip would see every
+	# tunnel visitor as a private docker address — i.e. "LAN".
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
 
 :80 {
 	encode gzip
 
-	# BeatSync WebSocket (reverse_proxy handles the Upgrade)
+	# BeatSync WebSocket (reverse_proxy handles the Upgrade). Admin and
+	# listeners share the path — admin is authenticated by ?creator=.
 	# Upstream is env-overridable: localhost in the all-in-one image,
 	# beatsync:8080 if the services are ever split across containers.
 	handle /ws* {
@@ -19,9 +35,39 @@
 		reverse_proxy {$BEATSYNC_UPSTREAM:localhost:8080}
 	}
 
-	# Show audio pushed by the FPP plugin via the ingest service (LAN-only),
-	# served to phones straight from disk. Audio is immutable per show —
-	# cache hard. show.json/nowplaying.json change constantly — no-cache.
+	# BeatSync's admin-ish HTTP endpoints have no auth of their own — require
+	# the shared token as a Bearer header before proxying (plugin/bridge send
+	# it). /upload/complete binds sources; /discover leaks room/client lists.
+	@adminApi path /upload/complete* /discover*
+	handle @adminApi {
+		@bad not header Authorization "Bearer {$FALCONBEAT_TOKEN}"
+		respond @bad "Forbidden" 403
+		reverse_proxy {$BEATSYNC_UPSTREAM:localhost:8080}
+	}
+
+	# Ingest writes — token-authed by ingest itself, so safe to expose.
+	# OPTIONS is proxied for the settings page's CORS preflight.
+	@ingestWrite {
+		path /media/* /config/*
+		method PUT DELETE OPTIONS
+	}
+	handle @ingestWrite {
+		reverse_proxy {$INGEST_UPSTREAM:localhost:8090}
+	}
+
+	# Operator settings page — LAN only: open http://<host>:<port>/settings.
+	# client_ip is XFF-aware via trusted_proxies, so tunnel visitors (a public
+	# forwarded IP) get 404 while LAN browsers are proxied to ingest's SPA.
+	@settings path /settings /settings/*
+	handle @settings {
+		@public not client_ip private_ranges
+		respond @public "Not found" 404
+		reverse_proxy {$INGEST_UPSTREAM:localhost:8090}
+	}
+
+	# Show audio pushed by the FPP plugin via ingest, served to devices
+	# straight from disk. Audio is immutable per show — cache hard.
+	# show.json/nowplaying.json/tags.json change constantly — no-cache.
 	handle /media/* {
 		root * /media
 		uri strip_prefix /media
@@ -30,13 +76,6 @@
 		@audio not path *.json
 		header @audio Cache-Control "public, max-age=3600, immutable"
 		file_server
-	}
-
-	# The operator settings page is LAN-only (served by ingest on :8090);
-	# don't let it resolve through the public SPA fallback.
-	@settings path /settings /settings/*
-	handle @settings {
-		respond "Not found" 404
 	}
 
 	# Everything else → the Vite SPA. index.html must always revalidate so a

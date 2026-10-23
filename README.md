@@ -34,15 +34,15 @@ driven by the companion plugin
 
 ```bash
 cd deploy
-cp .env.example .env          # set CREATOR_SECRET + INGEST_TOKEN
+cp .env.example .env          # set FALCONBEAT_TOKEN
 docker compose up -d          # pulls the CI-built image from GHCR
 ```
 
-Generate two **different** secrets:
+Generate one shared secret — it's the plugin's admin auth, the ingest
+Bearer token, and the `/upload/complete` gate all in one:
 
 ```bash
-openssl rand -hex 32    # → CREATOR_SECRET  (BeatSync admin WebSocket auth)
-openssl rand -hex 32    # → INGEST_TOKEN    (audio push Bearer token)
+openssl rand -hex 32    # → FALCONBEAT_TOKEN
 ```
 
 On Windows/PowerShell: `[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')`.
@@ -58,16 +58,19 @@ curl http://localhost:8000/health    # {"status":"ok"} through the edge
 docker compose logs -f               # interleaved logs from all three processes
 ```
 
-One container runs everything: BeatSync (Bun), the ingest service (LAN-only
-audio receiver), and Caddy (public edge serving the listener page + audio).
+One container runs everything: BeatSync (Bun), the ingest service, and
+Caddy — and **one published port** carries it all. Caddy routes by path and
+method: listeners get the page, `/ws`, and `/media` audio; the plugin
+reaches its admin socket, `/upload/complete`, and ingest writes through the
+same port with the token as a Bearer gate. `/settings` answers only to LAN
+addresses. BeatSync's `:8080` and ingest's `:8090` stay inside the
+container — nothing else is published.
 
 ### Ports
 
 | Port | Exposure | Purpose |
 |---|---|---|
-| `8000 → 80` | public (tunnel target) | Listener page, `/media/*` audio, `/ws` WebSocket proxy |
-| `8080` | **LAN only** | BeatSync admin WS + `POST /upload/complete` (unauthenticated — do NOT expose) |
-| `8090` | **LAN only** | Ingest PUTs (`Bearer` token), operator `/settings` page |
+| `8000 → 80` | tunnel target **and** the plugin's URL | Listener page, `/media` audio, `/ws` WebSocket, token-gated ingest writes + `/upload/complete`, LAN-only `/settings` |
 
 ## Public ingress (cloudflared)
 
@@ -91,13 +94,8 @@ Or run cloudflared as a sidecar container — a commented-out service is in
 
 | Plugin field | Value |
 |---|---|
-| FalconBeat WS URL | `ws://<docker-host>:8080` — LAN address; devices never use this |
-| Room ID | `000000` default; arbitrary in non-demo mode. The page reads `?room=<id>` — share `https://<host>/?room=<id>` if you change it |
-| Creator Secret | `CREATOR_SECRET` from `deploy/.env` |
-| Admin Secret | optional demo-mode secret — usually blank |
-| Ingest URL | `http://<docker-host>:8090` |
-| Ingest Token | `INGEST_TOKEN` from `deploy/.env` |
-| Public Media URL | `https://falconbeat.example.com/media` — **must end in `/media`** |
+| FalconBeat URL | `http://<docker-host>:8000` — the one published port; the plugin derives the WebSocket address from it |
+| Token | `FALCONBEAT_TOKEN` from `deploy/.env` — the single shared secret |
 | Extra Delay (ms) | `0` = auto; manual nudge added to the computed schedule delay |
 | Sync Gate (sec) | Hold each track's start until devices confirm loaded — `10` default, `0` = off. This is what makes FPP and the devices start on the same tick |
 | FPP Start Lag (ms) | `250` default — how long FPP takes to actually start media after the gate releases; tune by ear |
@@ -116,9 +114,9 @@ notification shade and lockscreen with working pause buttons.
 When the show goes off air for ~15s, joined listeners disconnect back to the
 play button and can tap in again when the show resumes.
 
-**Operator settings** live on the LAN only: `http://<docker-host>:8090/settings`
+**Operator settings** live on the LAN only: `http://<docker-host>:8000/settings`
 — show name, tagline, hosted-by, schedule, location, description, links. Saved
-to `media/show.json` (the public edge 404s `/settings` by design).
+to `media/show.json` (the edge 404s `/settings` for non-LAN addresses).
 
 ## Media lifecycle
 
@@ -126,9 +124,12 @@ to `media/show.json` (the public edge 404s `/settings` by design).
 2. Ingest extracts embedded metadata into sidecars: `<file>.art.jpg|png`
    (album art) and `<file>.tags.json` (title/artist/album — the page prefers
    these over FPP-reported tags)
-3. Plugin registers the public URL with BeatSync (`/upload/complete`) and
-   issues gated PLAY/PAUSE over the admin socket — devices preload, the server
-   waits for load ACKs, then everything fires on one scheduled timestamp
+3. Plugin registers the track's `/media` URL with BeatSync
+   (`/upload/complete`, Bearer-gated at the edge) and issues gated
+   PLAY/PAUSE over the admin socket — devices preload, the server waits for
+   load ACKs, then everything fires on one scheduled timestamp. URLs are
+   relative, so devices always fetch audio from whatever origin they loaded
+   the page from — LAN and tunneled listeners alike
 4. When a track finishes, the plugin evicts it from the room queue and deletes
    it (plus its sidecars) off `media/` — the volume doesn't fill up
 
@@ -172,8 +173,12 @@ See `AGENTS.md` for the protocol details, timing math, and operational quirks.
 
 - Room→track registrations are in-memory — after a container restart the
   plugin re-registers on its next media event; files in `media/` persist.
-- `/upload/complete` and ingest are unauthenticated-by-design LAN surfaces;
-  keep them off the public ingress (the Caddyfile doesn't proxy them).
+- `/upload/complete` and `/discover` are unauthenticated inside BeatSync —
+  the Caddyfile Bearer-gates them; keep `FALCONBEAT_TOKEN` strong since the
+  gate is the only thing between them and the public internet. Ingest
+  writes are token-protected by ingest itself. `/settings` is protected by
+  LAN-address matching only — fine for a form, but that's the one route a
+  misconfigured `trusted_proxies` could leak.
 - BeatSync's S3 backup/restore is disabled in the image (no R2 in this
   deployment); room state is in-memory by design.
 
