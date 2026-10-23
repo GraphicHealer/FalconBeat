@@ -176,16 +176,21 @@ body {
 .np-controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  position: relative;
   margin-top: 1rem;
 }
 .np-side {
-  width: 5.5rem;
   font-size: 0.75rem;
   color: #8b949e;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* Share pinned far left; up-next starts just right of the centered play. */
+.np-controls > .np-icon {
+  position: absolute;
+  left: 0;
 }
 .np-icon {
   border: none;
@@ -196,16 +201,15 @@ body {
   border-radius: 50%;
 }
 .np-next {
-  flex: 1;
-  min-width: 0;
-  width: auto;
+  position: absolute;
+  left: calc(50% + 2.9rem); /* just right of the 4.25rem play button */
+  right: 0;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
   gap: 0.1rem;
   text-align: left;
   overflow: hidden;
-  padding-left: 0.5rem;
 }
 .np-next small {
   font-size: 0.6rem;
