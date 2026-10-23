@@ -190,8 +190,9 @@ function Listener() {
   const [tint, setTint] = useState<Tint>(null);
   const [shared, setShared] = useState(false);
 
-  // ── About-the-show bottom sheet (peek → drag/tap to expand) ─────────
+  // ── Show info bottom sheet (peek → drag/tap to expand) ──────────────
   const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetBodyRef = useRef<HTMLDivElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dragY, setDragY] = useState<number | null>(null);
   const drag = useRef({ y0: 0, open0: false, moved: false });
@@ -228,6 +229,54 @@ function Listener() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [sheetOpen]);
+
+  // Swipe down anywhere in the sheet body closes it — but only when the
+  // body is scrolled to the top, so scrolling the info still works.
+  // Touch events (not pointer) so touchmove can be preventDefault'd
+  // before the browser claims the gesture for scrolling/pull-to-refresh.
+  useEffect(() => {
+    const body = sheetBodyRef.current;
+    if (!body) return;
+    let startY = 0;
+    let tracking = false;
+    let dragging = false;
+    const onStart = (e: TouchEvent) => {
+      tracking = body.scrollTop <= 0;
+      dragging = false;
+      startY = e.touches[0].clientY;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!tracking) return;
+      const el = sheetRef.current;
+      if (!el) return;
+      const dy = e.touches[0].clientY - startY;
+      if (!dragging && dy > 6 && body.scrollTop <= 0) {
+        dragging = true;
+        setDragY(0);
+      }
+      if (dragging) {
+        e.preventDefault();
+        setDragY(Math.min(el.offsetHeight - SHEET_PEEK_PX, Math.max(0, dy)));
+      }
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (dragging) {
+        if (e.changedTouches[0].clientY - startY > 40) setSheetOpen(false);
+        setDragY(null);
+      }
+      tracking = dragging = false;
+    };
+    body.addEventListener("touchstart", onStart, { passive: true });
+    body.addEventListener("touchmove", onMove, { passive: false });
+    body.addEventListener("touchend", onEnd);
+    body.addEventListener("touchcancel", onEnd);
+    return () => {
+      body.removeEventListener("touchstart", onStart);
+      body.removeEventListener("touchmove", onMove);
+      body.removeEventListener("touchend", onEnd);
+      body.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
 
   // ── data polling ──────────────────────────────────────────────────
   useEffect(() => {
@@ -500,7 +549,7 @@ function Listener() {
             {show.hostedBy && <span className="sheet-peek-sub">{show.hostedBy}</span>}
           </div>
         </div>
-        <div className="sheet-body">
+        <div className="sheet-body" ref={sheetBodyRef}>
           {(show.hostedBy || show.schedule || show.location) && (
             <div className="info-card">
               {show.hostedBy && <InfoRow icon={<HostIcon />} label="Hosted by" value={show.hostedBy} />}

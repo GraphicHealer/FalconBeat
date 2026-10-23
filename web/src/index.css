@@ -17,6 +17,8 @@
 body {
   min-height: 100dvh;
   -webkit-tap-highlight-color: transparent;
+  /* Pull-to-refresh would bounce a listener out of sync on a reload. */
+  overscroll-behavior-y: none;
 }
 
 /* ── Now-playing page (fullscreen, Spotify-style) ── */
@@ -351,6 +353,7 @@ body {
 .sheet-body {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.5rem 1.25rem calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
   display: flex;
   flex-direction: column;
