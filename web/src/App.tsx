@@ -235,8 +235,13 @@ function Listener() {
 
   const listening = s.joined;
   const onAir = isOnAir(np);
+  // The doc affirmatively reports off air (playing:false or stale) — clear
+  // the track display right away rather than letting s.trackUrl hold the
+  // last song on screen until the 15s disconnect grace fires. np === null
+  // is "unknown" (missing doc / poll hiccup) and keeps the fallback.
+  const offAir = np !== null && !onAir;
   // Current track: plugin metadata, else the engine's filename-derived name.
-  const trackFile = np?.filename ?? s.trackUrl;
+  const trackFile = offAir ? null : (np?.filename ?? s.trackUrl);
 
   // Embedded file tags (server-side sidecar) are authoritative over the
   // fields the plugin forwards from FPP. The plugin pushes nowplaying
@@ -300,7 +305,7 @@ function Listener() {
       clearInterval(retry);
     };
   }, [np?.next]);
-  const nextTitle = np?.next
+  const nextTitle = np?.next && !offAir
     ? (nextTags?.title ?? np.next.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ""))
     : null;
 
@@ -422,7 +427,7 @@ function Listener() {
       <p className="np-status">
         {shared
           ? "Link copied!"
-          : !onAir && !s.isPlaying && !listening
+          : !onAir && !s.isPlaying
             ? "The show isn't on the air right now."
             : listening
               ? `${statusLine(s)} · keep this page open and your screen on`
