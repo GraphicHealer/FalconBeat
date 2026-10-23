@@ -53,7 +53,7 @@ browser.
 
 ## Public ingress
 
-Phones need HTTPS (WebAudio/WSS), so put a Cloudflare Tunnel in front of the
+Devices need HTTPS (WebAudio/WSS), so put a Cloudflare Tunnel in front of the
 WebUI port — run cloudflared from Community Apps on Unraid, or on any host on the
 LAN, with ingress `falconbeat.yourdomain.com → http://<unraid-ip>:8000`.
 

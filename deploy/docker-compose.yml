@@ -5,7 +5,7 @@
 #
 # Audio flow (no S3): FPP plugin PUTs files to ingest (:8090, LAN-only) →
 # registers the public URL via POST /upload/complete (:8080, LAN-only) →
-# Caddy serves /media/* to phones through the tunnel. BeatSync stores
+# Caddy serves /media/* to devices through the tunnel. BeatSync stores
 # URLs, not bytes. Keep the plugin's admin WS connected — a room idle
 # >60s is deleted.
 

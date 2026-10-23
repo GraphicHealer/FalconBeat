@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/GraphicHealer/FalconBeat/issues</Support>
   <Project>https://github.com/GraphicHealer/FalconBeat</Project>
-  <Overview>Synced light-show audio for Falcon Player (FPP). Visitors open a webpage on their phones and hear the show audio in sync with the lights. Requires the fpp-plugin-FalconBeat plugin on your FPP controller, and a Cloudflare Tunnel (or equivalent HTTPS ingress) pointed at the WebUI port for public access.</Overview>
+  <Overview>Synced light-show audio for Falcon Player (FPP). Visitors open a webpage on their devices and hear the show audio in sync with the lights. Requires the fpp-plugin-FalconBeat plugin on your FPP controller, and a Cloudflare Tunnel (or equivalent HTTPS ingress) pointed at the WebUI port for public access.</Overview>
   <Category>MediaApp:Other Network:Other</Category>
   <WebUI>http://[IP]:[PORT:8000]/</WebUI>
   <TemplateURL/>

@@ -1,6 +1,6 @@
 # FalconBeat
 
-Synced light-show audio: visitors' phones play show audio in tight sync, triggered by
+Synced light-show audio: visitors' devices play show audio in tight sync, triggered by
 Falcon Player (FPP). Built on a self-hosted, **unmodified** BeatSync server
 (`beatsync/` submodule) + custom Vite listener page (`web/`) + admin control client
 (`bridge/` — protocol reference; the real plugin lives at
@@ -60,10 +60,10 @@ ingestToken→INGEST_TOKEN, mediaPublicUrl→https://<host>/media, roomId→ROOM
    file lands in `media/`
 2. Plugin `POST http://beatsync:8080/upload/complete`
    `{roomId, originalName, publicUrl: "https://<host>/media/song.mp3"}` →
-   room gets the source, phones preload it
+   room gets the source, devices preload it
 3. Plugin WS: `{type:"PLAY", audioSource: publicUrl, trackTimeSeconds: pos}`
 
-Phones fetch `https://<host>/media/song.mp3` straight from Caddy — BeatSync
+Devices fetch `https://<host>/media/song.mp3` straight from Caddy — BeatSync
 only ever stores the URL.
 
 ## Show metadata & plugin contract
@@ -113,14 +113,14 @@ admin WS and HTTP; only browsers go through Caddy (ws://host/ws).
 - Demo mode scans `DEMO_AUDIO_DIR` **once at startup** — runtime pushes are
   impossible (404 + PLAY rejected). Use normal mode for plugin-driven audio.
 - Non-demo PLAY goes through load-coordination (LOAD_AUDIO_SOURCE → client
-  ACKs → play when all loaded or 3s timeout). Phones preloaded on
+  ACKs → play when all loaded or 3s timeout). Devices preloaded on
   SET_AUDIO_SOURCES ACK fast; gate FPP start on the SCHEDULED_ACTION echo.
 - `/discover` only reports rooms with ≥1 connected client that are playing.
 - `PLAY`/`PAUSE` broadcast `SCHEDULED_ACTION` with `serverTimeToExecute` =
   `epochNow + max(400ms, 1.5*maxRTT+200, maxCompensation+200)`, capped 3s.
   `epochNow() = performance.timeOrigin + performance.now()` (ms since epoch).
 - `trackTimeSeconds` in PLAY is the **playback offset** — send FPP position +
-  expected delay to make phones seek into the track aligned to the sequence clock.
+  expected delay to make devices seek into the track aligned to the sequence clock.
 - Late joiners: client sends `SYNC` after its audio-ready gesture → server unicasts
   a scheduled PLAY at the computed resume position (+1.5s extra lead).
 - NTP: coded probe **pairs** (25ms apart, groupId shared), every 2.5s steady-state

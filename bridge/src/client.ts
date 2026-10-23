@@ -8,7 +8,7 @@
  * - PLAY is broadcast verbatim as SCHEDULED_ACTION with serverTimeToExecute =
  *   now + max(400ms, 1.5*maxClientRTT+200, maxClientCompensation+200), cap 3s.
  * - trackTimeSeconds is the playback OFFSET — send FPP position + expected
- *   delay to make phones seek into the track, not restart it.
+ *   delay to make devices seek into the track, not restart it.
  * - Server sends LIVENESS_PING after 15s of silence; reply LIVENESS_PONG or
  *   the connection is reaped at 60s.
  * - GET /discover → active (playing) rooms incl. playbackState
@@ -29,7 +29,7 @@ export interface BridgeConfig {
   ingestUrl: string;
   /** Bearer token for ingest PUTs */
   ingestToken: string;
-  /** Public base phones fetch audio from, e.g. https://falconbeat.example.com/media */
+  /** Public base devices fetch audio from, e.g. https://falconbeat.example.com/media */
   mediaPublicUrl: string;
 }
 

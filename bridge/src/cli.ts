@@ -43,7 +43,7 @@ Env:  BEATSYNC_URL    (default ws://localhost:8080)
       CREATOR_SECRET  non-demo admin: ?creator= (guaranteed admin)
       INGEST_URL      (default http://localhost:8090)
       INGEST_TOKEN    bearer token for ingest PUTs
-      MEDIA_PUBLIC_URL public base for phone fetches (default http://localhost:8090/media)
+      MEDIA_PUBLIC_URL public base for device fetches (default http://localhost:8090/media)
       ADMIN_SECRET    demo mode only: ?admin= gate
       ROOM_ID         (default 000000)`);
   process.exit(cmd === "help" || cmd === "--help" ? 0 : 1);

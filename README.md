@@ -1,16 +1,16 @@
 # FalconBeat
 
 Self-hosted synchronized audio for [Falcon Player](https://github.com/FalconChristmas/fpp)
-(FPP) light shows. Visitors open a webpage on their phones and hear the show
+(FPP) light shows. Visitors open a webpage on their devices and hear the show
 audio in sync with the lights — from anywhere on the internet, not just the
 show Wi-Fi.
 
 Everything runs on hardware you own: one Docker container on your LAN serves
-the listener page, hosts the audio, and keeps every phone's playback locked to
+the listener page, hosts the audio, and keeps every device's playback locked to
 the same clock. The only outside piece is whatever HTTPS ingress you choose
 (a Cloudflare Tunnel, a reverse proxy, a VPS — anything).
 
-Phone-side sync is powered by [BeatSync](https://github.com/freeman-jiang/beatsync)
+Device-side sync is powered by [BeatSync](https://github.com/freeman-jiang/beatsync)
 (MIT © freeman-jiang), vendored as an unmodified submodule. The FPP side is
 driven by the companion plugin
 **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer/fpp-plugin-FalconBeat)**.
@@ -24,7 +24,7 @@ driven by the companion plugin
 - Public HTTPS ingress to the container's edge port. A
   [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
   is the easy path — free, no port-forwarding — but anything that gives the
-  page a public HTTPS URL works (phones require HTTPS for WebAudio).
+  page a public HTTPS URL works (devices require HTTPS for WebAudio).
 
 ## Quick start
 
@@ -87,7 +87,7 @@ Or run cloudflared as a sidecar container — a commented-out service is in
 
 | Plugin field | Value |
 |---|---|
-| FalconBeat WS URL | `ws://<docker-host>:8080` — LAN address; phones never use this |
+| FalconBeat WS URL | `ws://<docker-host>:8080` — LAN address; devices never use this |
 | Room ID | `000000` default; arbitrary in non-demo mode. The page reads `?room=<id>` — share `https://<host>/?room=<id>` if you change it |
 | Creator Secret | `CREATOR_SECRET` from `deploy/.env` |
 | Admin Secret | optional demo-mode secret — usually blank |
@@ -95,9 +95,9 @@ Or run cloudflared as a sidecar container — a commented-out service is in
 | Ingest Token | `INGEST_TOKEN` from `deploy/.env` |
 | Public Media URL | `https://falconbeat.example.com/media` — **must end in `/media`** |
 | Extra Delay (ms) | `0` = auto; manual nudge added to the computed schedule delay |
-| Sync Gate (sec) | Hold each track's start until devices confirm loaded — `10` default, `0` = off. This is what makes FPP and the phones start on the same tick |
+| Sync Gate (sec) | Hold each track's start until devices confirm loaded — `10` default, `0` = off. This is what makes FPP and the devices start on the same tick |
 | FPP Start Lag (ms) | `250` default — how long FPP takes to actually start media after the gate releases; tune by ear |
-| Preload Settle (ms) | `2500` default — when a track is pushed at play time, wait this long before PLAY so phones can download over WAN. Counts against the gate; `0` = off |
+| Preload Settle (ms) | `2500` default — when a track is pushed at play time, wait this long before PLAY so devices can download over WAN. Counts against the gate; `0` = off |
 | Disconnect grace (s) | how long the admin socket is held after playlist stop |
 
 ## The listener page
@@ -123,7 +123,7 @@ to `media/show.json` (the public edge 404s `/settings` by design).
    (album art) and `<file>.tags.json` (title/artist/album — the page prefers
    these over FPP-reported tags)
 3. Plugin registers the public URL with BeatSync (`/upload/complete`) and
-   issues gated PLAY/PAUSE over the admin socket — phones preload, the server
+   issues gated PLAY/PAUSE over the admin socket — devices preload, the server
    waits for load ACKs, then everything fires on one scheduled timestamp
 4. When a track finishes, the plugin evicts it from the room queue and deletes
    it (plus its sidecars) off `media/` — the volume doesn't fill up
@@ -175,6 +175,6 @@ See `AGENTS.md` for the protocol details, timing math, and operational quirks.
 
 ## License & attribution
 
-Phone-side synchronization uses [BeatSync](https://github.com/freeman-jiang/beatsync)
+Device-side synchronization uses [BeatSync](https://github.com/freeman-jiang/beatsync)
 by freeman-jiang, vendored unmodified under the MIT License — see
 `beatsync/LICENSE`.
