@@ -169,11 +169,20 @@ class AudioEngine {
 
     // Browsers only surface OS-level media controls (Android shade/lockscreen,
     // Firefox's media notification — it doesn't implement navigator.mediaSession)
-    // for a real media element; WebAudio alone is invisible to them. This
-    // element plays an empty MediaStream — nothing connects into the
-    // destination, so it produces silence — which still counts as "playing
-    // media" while all audible output stays on the synced ctx.destination path.
+    // for a real media element; WebAudio alone is invisible to them. And they
+    // only treat an element as playing media when it produces actual audio —
+    // an empty stream keeps the widget hidden. Feed it a subsonic tone: real
+    // audio energy for the audibility check, but far below what any speaker
+    // can reproduce or ear can hear. All audible output stays on the synced
+    // ctx.destination path.
     const streamDest = this.ctx.createMediaStreamDestination();
+    const mediaTone = this.ctx.createOscillator();
+    mediaTone.frequency.value = 15;
+    const mediaToneGain = this.ctx.createGain();
+    mediaToneGain.gain.value = 0.3;
+    mediaTone.connect(mediaToneGain);
+    mediaToneGain.connect(streamDest);
+    mediaTone.start();
     const el = document.createElement("audio");
     el.srcObject = streamDest.stream;
     el.preload = "none";
