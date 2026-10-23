@@ -83,6 +83,7 @@ export class SyncEngine {
   private trackDuration = 0;
 
   private heartbeatTimer: number | null = null;
+  private mediaWired = false;
   private lastNtpRequestAt: number | null = null;
   private reconnectTimer: number | null = null;
   private connectWatchdog: number | null = null;
@@ -139,6 +140,21 @@ export class SyncEngine {
     } catch (e) {
       console.warn("AudioContext resume failed", e);
     }
+    // The hidden media element is what puts us in the OS media widget. Its
+    // pause/play events also serve as the control surface on browsers that
+    // don't support mediaSession action handlers (Firefox): pausing the
+    // element from the notification leaves, playing rejoins.
+    const el = audioEngine.getMediaElement();
+    if (el && !this.mediaWired) {
+      this.mediaWired = true;
+      el.addEventListener("pause", () => {
+        if (this.joined) this.leave();
+      });
+      el.addEventListener("play", () => {
+        if (!this.joined) void this.join();
+      });
+    }
+    audioEngine.playMediaElement();
     this.connect();
     this.requestSync();
     this.loadAllSources();
@@ -148,6 +164,8 @@ export class SyncEngine {
   leave(): void {
     this.joined = false;
     this.stopPlaybackLocal();
+    // joined is already false, so the element's 'pause' handler no-ops.
+    audioEngine.pauseMediaElement();
     this.teardownSocket();
     this.emit();
   }

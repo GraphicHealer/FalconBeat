@@ -23,6 +23,8 @@ class AudioEngine {
   private lowPass: BiquadFilterNode | null = null;
   private wakeLock: WakeLockSentinel | null = null;
   private silentAudioElement: HTMLAudioElement | null = null;
+  private mediaElement: HTMLAudioElement | null = null;
+  private mediaGestureWired = false;
   private hasRegisteredGestureListeners = false;
   private hasVisibilityListener = false;
   private stateChangeCallback: ((state: AudioContextState) => void) | null = null;
@@ -107,6 +109,42 @@ class AudioEngine {
     }
   }
 
+  /**
+   * The hidden <audio> element that makes playback visible to OS media
+   * controls. Its pause/play events are the control surface on browsers
+   * without navigator.mediaSession action handlers (Firefox).
+   */
+  getMediaElement(): HTMLAudioElement | null {
+    return this.mediaElement;
+  }
+
+  /** Play the media element so the OS shows its media widget. */
+  playMediaElement(): void {
+    const el = this.mediaElement;
+    if (!el || !el.paused) return;
+    el.play().catch(() => {
+      // Gesture may have lapsed — retry on the next raw DOM gesture.
+      if (this.mediaGestureWired) return;
+      this.mediaGestureWired = true;
+      const retry = () => {
+        el.play()
+          .then(() => {
+            for (const evt of ["click", "touchend", "keydown"]) {
+              window.removeEventListener(evt, retry, true);
+            }
+          })
+          .catch(() => {});
+      };
+      for (const evt of ["click", "touchend", "keydown"]) {
+        window.addEventListener(evt, retry, { capture: true, passive: true });
+      }
+    });
+  }
+
+  pauseMediaElement(): void {
+    this.mediaElement?.pause();
+  }
+
   createBufferSource(): AudioBufferSourceNode {
     return this.getContext().createBufferSource();
   }
@@ -128,6 +166,19 @@ class AudioEngine {
 
     this.lowPass.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
+
+    // Browsers only surface OS-level media controls (Android shade/lockscreen,
+    // Firefox's media notification — it doesn't implement navigator.mediaSession)
+    // for a real media element; WebAudio alone is invisible to them. This
+    // element plays an empty MediaStream — nothing connects into the
+    // destination, so it produces silence — which still counts as "playing
+    // media" while all audible output stays on the synced ctx.destination path.
+    const streamDest = this.ctx.createMediaStreamDestination();
+    const el = document.createElement("audio");
+    el.srcObject = streamDest.stream;
+    el.preload = "none";
+    el.disableRemotePlayback = true;
+    this.mediaElement = el;
 
     // Bluetooth keepalive: -80dB 1Hz signal keeps the A2DP buffer from
     // resettling between pause/play cycles (browsers optimize away gain=0).
