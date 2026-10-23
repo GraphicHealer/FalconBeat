@@ -295,7 +295,8 @@ body {
   right: 0;
   bottom: 0;
   z-index: 40;
-  height: min(80dvh, 42rem);
+  height: auto;
+  max-height: min(80dvh, 42rem);
   max-width: 30rem;
   margin: 0 auto;
   display: flex;
@@ -355,21 +356,6 @@ body {
   flex-direction: column;
   gap: 0.6rem;
   text-align: left;
-}
-
-.sheet-head {
-  padding-bottom: 0.2rem;
-}
-.sheet-title {
-  font-size: 1.4rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  line-height: 1.15;
-}
-.sheet-tagline {
-  font-size: 0.9rem;
-  color: #8b949e;
-  margin-top: 0.2rem;
 }
 
 .info-card {

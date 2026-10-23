@@ -501,10 +501,6 @@ function Listener() {
           </div>
         </div>
         <div className="sheet-body">
-          <div className="sheet-head">
-            <h2 className="sheet-title">{show.showName}</h2>
-            {show.tagline && <p className="sheet-tagline">{show.tagline}</p>}
-          </div>
           {(show.hostedBy || show.schedule || show.location) && (
             <div className="info-card">
               {show.hostedBy && <InfoRow icon={<HostIcon />} label="Hosted by" value={show.hostedBy} />}
