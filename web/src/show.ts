@@ -21,6 +21,8 @@ export interface ShowConfig {
   description?: string;
   schedule?: string;
   location?: string;
+  /** Public listener URL — what the yard-sign QR should encode. */
+  publicUrl?: string;
   links: ShowLink[];
 }
 

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import qrcode from "qrcode-generator";
 import { DEFAULT_SHOW, fetchShow, type ShowConfig, type ShowLink } from "./show";
 
 const LS_INGEST = "falconbeat.ingestUrl";
@@ -8,6 +9,32 @@ const LS_TOKEN = "falconbeat.ingestToken";
 // visitors), and the edge proxies /config PUTs to ingest — so same-origin
 // is always the right ingest endpoint.
 const defaultIngest = () => localStorage.getItem(LS_INGEST) ?? location.origin;
+
+/** QR for signage/handouts — renders the encoded URL to a canvas. */
+function QrCode({ text }: { text: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const qr = qrcode(0, "M"); // type-0 = auto-size, M = ~15% error correction
+    qr.addData(text);
+    qr.make();
+    const n = qr.getModuleCount();
+    const quiet = 4; // required quiet zone, in modules
+    const scale = 6;
+    canvas.width = canvas.height = (n + quiet * 2) * scale;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000000";
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+      }
+    }
+  }, [text]);
+  return <canvas ref={ref} className="qr-canvas" aria-label={`QR code linking to ${text}`} />;
+}
 
 /**
  * Operator settings page (/settings). Edits show.json via ingest — open it
@@ -28,6 +55,10 @@ export default function Settings() {
 
   const setLink = (i: number, patch: Partial<ShowLink>) =>
     set({ links: cfg.links.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
+
+  // What the QR encodes — the public URL once configured, else the address
+  // the settings page itself was reached on (useful for LAN testing).
+  const qrTarget = (cfg.publicUrl ?? "").trim() || location.origin;
 
   const save = async () => {
     if (!token) {
@@ -111,6 +142,25 @@ export default function Settings() {
             </button>
           </div>
         ))}
+
+        <h2 className="form-h">Share</h2>
+        <label>
+          Public listener URL
+          <input
+            value={cfg.publicUrl ?? ""}
+            onChange={(e) => set({ publicUrl: e.target.value })}
+            placeholder="https://lights.example.com"
+          />
+        </label>
+        <div className="qr-wrap">
+          <QrCode text={qrTarget} />
+          <p className="qr-caption">{qrTarget}</p>
+          <p className="qr-hint">
+            {cfg.publicUrl
+              ? "Print or screenshot this for signage — it opens your public listener page."
+              : "Showing this server's LAN address — set the public URL above so the QR works from cellular."}
+          </p>
+        </div>
 
         <button className="listen-btn save-btn" onClick={() => void save()}>
           Save

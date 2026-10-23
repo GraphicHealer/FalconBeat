@@ -66,4 +66,9 @@ ENV NODE_ENV=production \
     PORT=8090 \
     WEB_DIST=/srv/falconbeat
 
+# Container health = the edge responds (Caddy → beatsync). Bun is the only
+# HTTP client guaranteed in the image.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD bun -e 'fetch("http://localhost/health").then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))'
+
 ENTRYPOINT ["/entrypoint.sh"]

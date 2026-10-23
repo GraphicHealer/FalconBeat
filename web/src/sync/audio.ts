@@ -10,6 +10,40 @@ export const isAudioContextPaused = (state: AudioContextState | string | undefin
 const SILENCE_DATA_URL =
   "data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQIAAAAAAA==";
 
+/**
+ * Synthesize the hidden media element's audio file at runtime: 10 seconds
+ * of a 15Hz subsonic sine, 8kHz/16-bit mono PCM WAV (~160KB blob). The
+ * low sample rate keeps it small; 15Hz is well under Nyquist here.
+ */
+const makeToneWavUrl = (): string => {
+  const seconds = 10;
+  const freq = 15;
+  const amp = 0.3;
+  const rate = 8000;
+  const n = seconds * rate;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const writeStr = (o: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  v.setUint32(4, 36 + n * 2, true);
+  writeStr(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); // PCM chunk size
+  v.setUint16(20, 1, true); // PCM format
+  v.setUint16(22, 1, true); // mono
+  v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true); // byte rate
+  v.setUint16(32, 2, true); // block align
+  v.setUint16(34, 16, true); // bits per sample
+  writeStr(36, "data");
+  v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    v.setInt16(44 + i * 2, Math.round(amp * 32767 * Math.sin((2 * Math.PI * freq * i) / rate)), true);
+  }
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+};
+
 /** Reported outputLatency above this is garbage (e.g. Bluetooth reporting 648ms) */
 const MAX_TRUSTWORTHY_OUTPUT_LATENCY_MS = 100;
 
@@ -21,6 +55,7 @@ class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private lowPass: BiquadFilterNode | null = null;
+  private analyser: AnalyserNode | null = null;
   private wakeLock: WakeLockSentinel | null = null;
   private silentAudioElement: HTMLAudioElement | null = null;
   private mediaElement: HTMLAudioElement | null = null;
@@ -56,6 +91,11 @@ class AudioEngine {
   getInputNode(): AudioNode {
     this.getContext();
     return this.lowPass!;
+  }
+
+  /** Spectrum tap on the audible chain — the page's equalizer background. */
+  getAnalyser(): AnalyserNode | null {
+    return this.analyser;
   }
 
   getCurrentTime(): number {
@@ -167,25 +207,24 @@ class AudioEngine {
     this.lowPass.connect(this.masterGain);
     this.masterGain.connect(this.ctx.destination);
 
+    // Side-chain only — feeds the page background's spectrum, no output.
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 128;
+    this.analyser.smoothingTimeConstant = 0.8;
+    this.masterGain.connect(this.analyser);
+
     // Browsers only surface OS-level media controls (Android shade/lockscreen,
     // Firefox's media notification — it doesn't implement navigator.mediaSession)
-    // for a real media element; WebAudio alone is invisible to them. And they
-    // only treat an element as playing media when it produces actual audio —
-    // an empty stream keeps the widget hidden. Feed it a subsonic tone: real
-    // audio energy for the audibility check, but far below what any speaker
-    // can reproduce or ear can hear. All audible output stays on the synced
-    // ctx.destination path.
-    const streamDest = this.ctx.createMediaStreamDestination();
-    const mediaTone = this.ctx.createOscillator();
-    mediaTone.frequency.value = 15;
-    const mediaToneGain = this.ctx.createGain();
-    mediaToneGain.gain.value = 0.3;
-    mediaTone.connect(mediaToneGain);
-    mediaToneGain.connect(streamDest);
-    mediaTone.start();
+    // for a real media element; WebAudio alone is invisible to them. The
+    // element also has to be playing audible media of a few seconds' duration
+    // — a silent/empty stream keeps the widget hidden. This is a real WAV
+    // file: a 15Hz subsonic tone, 10s, looped. Real audio energy satisfies
+    // the audibility + duration checks; nothing reaches the ear or speaker.
+    // All audible output stays on the synced ctx.destination path.
     const el = document.createElement("audio");
-    el.srcObject = streamDest.stream;
-    el.preload = "none";
+    el.src = makeToneWavUrl();
+    el.loop = true;
+    el.preload = "auto";
     el.disableRemotePlayback = true;
     this.mediaElement = el;
 

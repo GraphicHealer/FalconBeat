@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { syncEngine, type EngineState } from "./sync/engine";
+import { audioEngine } from "./sync/audio";
 import {
   artCandidates,
   DEFAULT_SHOW,
@@ -102,6 +103,43 @@ function Art({ filename, onTint }: { filename: string | null; onTint: (t: Tint) 
       draggable={false}
     />
   );
+}
+
+/** Live spectrum bars behind the page — tinted to the current album art. */
+function EqBackground() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+    let raf = 0;
+    const bins = new Uint8Array(64); // fftSize 128 → 64 frequency bins
+    const draw = () => {
+      raf = requestAnimationFrame(draw);
+      const w = (canvas.width = canvas.clientWidth);
+      const h = (canvas.height = canvas.clientHeight);
+      ctx.clearRect(0, 0, w, h);
+      const an = audioEngine.getAnalyser();
+      if (!an) return;
+      an.getByteFrequencyData(bins);
+      const tint = getComputedStyle(canvas.parentElement ?? canvas)
+        .getPropertyValue("--art-tint")
+        .trim();
+      ctx.fillStyle = tint || "#f0b429";
+      const bars = 40;
+      const step = Math.floor(bins.length / bars);
+      const bw = w / bars;
+      for (let i = 0; i < bars; i++) {
+        let v = 0;
+        for (let j = 0; j < step; j++) v = Math.max(v, bins[i * step + j]);
+        const bh = (v / 255) * h * 0.75;
+        ctx.fillRect(i * bw + bw * 0.18, h - bh, bw * 0.64, bh);
+      }
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas className="eq-bg" ref={ref} aria-hidden />;
 }
 
 function PlayIcon() {
@@ -446,6 +484,9 @@ function Listener() {
       className="np-page"
       style={{ "--art-tint": tint ? `rgb(${tint[0]},${tint[1]},${tint[2]})` : undefined } as CSSProperties}
     >
+      {/* ── Live spectrum background (silence when nothing is playing) ── */}
+      <EqBackground />
+
       {/* ── Top bar: show identity + about toggle ── */}
       <header className="np-top">
         <span className="np-top-side np-version">
