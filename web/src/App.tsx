@@ -243,6 +243,51 @@ function Listener() {
   const showInfo = show.description || show.schedule || show.location ||
     show.hostedBy || show.links.length > 0;
 
+  // Up-next: plugin pushes the next filename; prefer its embedded tags
+  // (the lookahead push usually means the sidecar already exists).
+  const [nextTags, setNextTags] = useState<TrackTags | null>(null);
+  useEffect(() => {
+    if (!np?.next) {
+      setNextTags(null);
+      return;
+    }
+    let alive = true;
+    void fetchTrackTags(np.next).then((t) => alive && setNextTags(t));
+    return () => {
+      alive = false;
+    };
+  }, [np?.next]);
+  const nextTitle = np?.next
+    ? (nextTags?.title ?? np.next.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ""))
+    : null;
+
+  // Media Session — Android shade/lockscreen shows what's playing with
+  // artwork; the play/pause hardware buttons map to join/leave.
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist: artist ?? "",
+        album: album ?? show.showName ?? "",
+        artwork: artCandidates(trackFile).map((src) => ({ src })),
+      });
+      navigator.mediaSession.playbackState = s.isPlaying
+        ? "playing"
+        : listening
+          ? "paused"
+          : "none";
+    } catch {}
+  }, [title, artist, album, show.showName, trackFile, s.isPlaying, listening]);
+
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler("play", () => void syncEngine.join());
+      navigator.mediaSession.setActionHandler("pause", () => syncEngine.leave());
+    } catch {}
+  }, []);
+
   const share = async () => {
     const data = { title: show.showName || "FalconBeat", text: `Listen to ${show.showName} live`, url: location.href };
     try {
@@ -306,9 +351,9 @@ function Listener() {
 
       {/* ── Controls ── */}
       <section className="np-controls">
-        <span className="np-side">
-          {listening && s.listenerCount > 0 ? `${s.listenerCount} listening` : ""}
-        </span>
+        <button className="np-side np-icon" onClick={() => void share()} aria-label="Share this page">
+          <ShareIcon />
+        </button>
         <button
           className={`np-play${listening ? " playing" : ""}`}
           onClick={() => (listening ? syncEngine.leave() : void syncEngine.join())}
@@ -316,9 +361,15 @@ function Listener() {
         >
           {listening ? <PauseIcon /> : <PlayIcon />}
         </button>
-        <button className="np-side np-icon" onClick={() => void share()} aria-label="Share this page">
-          <ShareIcon />
-        </button>
+        <span className="np-side np-next">
+          {nextTitle && (
+            <>
+              <small>Up next</small>
+              <span className="np-next-title">{nextTitle}</span>
+            </>
+          )}
+          {!nextTitle && listening && s.listenerCount > 0 && `${s.listenerCount} listening`}
+        </span>
       </section>
 
       {/* ── Status line ── */}

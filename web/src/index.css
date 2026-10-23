@@ -195,6 +195,26 @@ body {
   height: 2.5rem;
   border-radius: 50%;
 }
+.np-next {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+  overflow: hidden;
+}
+.np-next small {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.np-next-title {
+  font-size: 0.75rem;
+  color: #c9d1d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
 .np-icon:active {
   color: #e6edf3;
   background: rgba(255, 255, 255, 0.08);

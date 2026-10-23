@@ -30,6 +30,8 @@ export interface NowPlaying {
   artist?: string;
   album?: string;
   filename?: string;
+  /** Filename of the next playlist entry — the "Up next" label. */
+  next?: string;
   /** ms epoch when the plugin wrote this; staleness → treat as off air */
   updatedAtMs?: number;
 }
