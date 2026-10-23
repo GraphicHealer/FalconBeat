@@ -47,11 +47,26 @@ type Tint = [number, number, number] | null;
 function Art({ filename, onTint }: { filename: string | null; onTint: (t: Tint) => void }) {
   const [idx, setIdx] = useState(0);
   const candidates = artCandidates(filename);
+  const attempts = useRef(0);
   useEffect(() => {
     setIdx(0);
+    attempts.current = 0;
     onTint(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filename]);
+
+  // The sidecar is written during upload — it may not exist when the track
+  // first appears. If every candidate 404s, re-walk them a few times before
+  // settling on the placeholder for good (bounded: ~40s covers slow pushes).
+  useEffect(() => {
+    if (!candidates.length || idx < candidates.length || attempts.current >= 8) return;
+    const retry = setInterval(() => {
+      if (++attempts.current >= 8) clearInterval(retry);
+      setIdx(0);
+    }, 5000);
+    return () => clearInterval(retry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx >= candidates.length, filename]);
 
   const sample = (img: HTMLImageElement) => {
     try {
@@ -224,20 +239,37 @@ function Listener() {
   const trackFile = np?.filename ?? s.trackUrl;
 
   // Embedded file tags (server-side sidecar) are authoritative over the
-  // fields the plugin forwards from FPP.
+  // fields the plugin forwards from FPP. The plugin pushes nowplaying
+  // BEFORE the file finishes uploading, so the sidecar may not exist yet —
+  // retry until it lands (or the file proves untagged).
   useEffect(() => {
     if (!trackFile) {
       setTags(null);
       return;
     }
     let alive = true;
-    void fetchTrackTags(trackFile).then((t) => alive && setTags(t));
+    let tries = 0;
+    const load = () =>
+      void fetchTrackTags(trackFile).then((t) => {
+        if (!alive) return;
+        setTags(t);
+        if (t || ++tries >= 6) clearInterval(retry);
+      });
+    load();
+    const retry = setInterval(load, 5000);
     return () => {
       alive = false;
+      clearInterval(retry);
     };
   }, [trackFile]);
 
-  const title = tags?.title ?? np?.title ?? s.trackName ?? "Nothing playing";
+  // Last-resort title: the filename stem, so a track shows something even
+  // when neither sidecar tags nor plugin metadata exist (e.g. a
+  // reconcile-triggered play where the media event carried no tags).
+  const fileStem = trackFile
+    ? decodeURIComponent(trackFile.split(/[\\/]/).pop()!).replace(/\.[^.]+$/, "")
+    : null;
+  const title = tags?.title ?? np?.title ?? s.trackName ?? fileStem ?? "Nothing playing";
   const artist = tags?.artist ?? np?.artist ?? null;
   const album = tags?.album ?? np?.album ?? null;
   const showInfo = show.description || show.schedule || show.location ||
