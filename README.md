@@ -1,70 +1,77 @@
 # FalconBeat
 
-Synced light-show audio for [Falcon Player](https://github.com/FalconChristmas/fpp) (FPP):
-visitors open a webpage on their phones and hear the show audio in sync with the lights,
-from anywhere on the internet — not just the show Wi-Fi.
+Self-hosted synchronized audio for [Falcon Player](https://github.com/FalconChristmas/fpp)
+(FPP) light shows. Visitors open a webpage on their phones and hear the show
+audio in sync with the lights — from anywhere on the internet, not just the
+show Wi-Fi.
 
-The phone side is powered by a self-hosted [BeatSync](https://github.com/freeman-jiang/beatsync)
-server (pinned, unmodified submodule) plus a custom listener web app. The FPP side is driven by
-the companion plugin: **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer/fpp-plugin-FalconBeat)**.
+Everything runs on hardware you own: one Docker container on your LAN serves
+the listener page, hosts the audio, and keeps every phone's playback locked to
+the same clock. The only outside piece is whatever HTTPS ingress you choose
+(a Cloudflare Tunnel, a reverse proxy, a VPS — anything).
+
+Phone-side sync is powered by [BeatSync](https://github.com/freeman-jiang/beatsync)
+(MIT © freeman-jiang), vendored as an unmodified submodule. The FPP side is
+driven by the companion plugin
+**[fpp-plugin-FalconBeat](https://github.com/GraphicHealer/fpp-plugin-FalconBeat)**.
 
 ## Requirements
 
-- A Docker host (any Linux box, Pi, or NAS — amd64 or arm64) on the
-  **same LAN as the FPP controller**
+- A Docker host on the **same LAN as the FPP controller** — any Linux box,
+  Pi, or NAS (amd64 or arm64)
 - FPP with **[fpp-plugin-FalconBeat](https://github.com/GraphicHealer/fpp-plugin-FalconBeat)**
   installed (FPP → Content Setup → Plugin Manager → paste the repo URL)
-- A Cloudflare Tunnel (cloudflared) or equivalent to expose the listener page publicly —
-  phones need HTTPS for WebAudio + WebSocket on iOS/Android
+- Public HTTPS ingress to the container's edge port. A
+  [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+  is the easy path — free, no port-forwarding — but anything that gives the
+  page a public HTTPS URL works (phones require HTTPS for WebAudio).
 
 ## Quick start
 
 ```bash
 cd deploy
-cp .env.example .env          # set CREATOR_SECRET + INGEST_TOKEN (long random strings)
+cp .env.example .env          # set CREATOR_SECRET + INGEST_TOKEN
 docker compose up -d          # pulls the CI-built image from GHCR
 ```
 
-Generate the two secrets — they must be **different** values:
+Generate two **different** secrets:
 
 ```bash
 openssl rand -hex 32    # → CREATOR_SECRET  (BeatSync admin WebSocket auth)
 openssl rand -hex 32    # → INGEST_TOKEN    (audio push Bearer token)
 ```
 
-On Windows/PowerShell: `[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')` works too.
+On Windows/PowerShell: `[guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')`.
 
 To build locally instead of pulling: `docker compose up -d --build`.
 
-The published image is `ghcr.io/graphichealer/falconbeat` (amd64 + arm64, so it
-runs on a Pi too), built by `.github/workflows/docker.yml` on every push to
-`main` and every `v*` tag. Note: GHCR packages default to **private** — make the
-package public (Packages → falconbeat → Package settings) or `docker login
-ghcr.io` on the Docker host first.
-
-One container runs everything: the BeatSync server (Bun), the media ingest service,
-and Caddy serving the listener page + audio. Verify it came up:
+The published image is `ghcr.io/graphichealer/falconbeat` (amd64 + arm64),
+built by `.github/workflows/docker.yml` on every GitHub **release** — tags like
+`0.4.4`, `0.4`, `latest`. Verify it's up:
 
 ```bash
-curl http://localhost:8000/health    # {"status":"ok",...} through the edge
+curl http://localhost:8000/health    # {"status":"ok"} through the edge
 docker compose logs -f               # interleaved logs from all three processes
 ```
+
+One container runs everything: BeatSync (Bun), the ingest service (LAN-only
+audio receiver), and Caddy (public edge serving the listener page + audio).
 
 ### Ports
 
 | Port | Exposure | Purpose |
 |---|---|---|
-| `8000 → 80` | cloudflared target | Public edge: listener page, `/media/*` audio, `/ws` WebSocket proxy |
+| `8000 → 80` | public (tunnel target) | Listener page, `/media/*` audio, `/ws` WebSocket proxy |
 | `8080` | **LAN only** | BeatSync admin WS + `POST /upload/complete` (unauthenticated — do NOT expose) |
-| `8090` | **LAN only** | Ingest: plugin PUTs audio files here (`Bearer` token) |
+| `8090` | **LAN only** | Ingest PUTs (`Bearer` token), operator `/settings` page |
 
 ## Public ingress (cloudflared)
 
-Create a tunnel (Cloudflare Zero Trust → Networks → Tunnels), get the token,
-and point an ingress hostname at the edge port:
+Create a tunnel (Cloudflare Zero Trust → Networks → Tunnels) and point a
+hostname at the edge port:
 
 ```yaml
-# cloudflared config.yml (see deploy/cloudflared.config.example.yml)
+# cloudflared config.yml — see deploy/cloudflared.config.example.yml
 tunnel: <tunnel-id>
 credentials-file: /path/to/credentials.json
 ingress:
@@ -76,49 +83,55 @@ ingress:
 Or run cloudflared as a sidecar container — a commented-out service is in
 `deploy/docker-compose.yml` (set `CLOUDFLARED_TOKEN` in `.env`).
 
-## Show info, now-playing & listener count
-
-Two JSON docs live alongside the audio in `media/` and are served publicly at
-`/media/*.json` (no-cache — audio stays `immutable`):
-
-- **`show.json`** — what the listener page displays: `showName`, `tagline`,
-  `description`, `schedule`, `location`, `links: [{label, url}]`. Edit it from
-  any device on the LAN at `http://<docker-host>:8090/settings` — the ingest
-  service itself serves the settings page (LAN-only, same-origin PUTs; asks for
-  the ingest token, saved in the browser's localStorage). You can also edit the
-  file on the share directly.
-- **`nowplaying.json`** — pushed by the plugin on every track/stop event:
-  `{playing, title, artist, album, filename, updatedAtMs}`. The page polls it
-  every ~3s for the song title/artist and the on-air/off-air banner
-  (`updatedAtMs` stale >90s counts as off air).
-
-The listener count comes from BeatSync's `CLIENT_CHANGE` broadcast — the page
-counts connected **non-admin** clients, so the plugin's admin socket doesn't
-inflate the number.
-
 ## Plugin settings (FPP → Content Setup → FalconBeat)
-
-Each field maps to a server-side setting:
 
 | Plugin field | Value |
 |---|---|
-| BeatSync WS URL | `ws://<docker-host>:8080` |
-| Room ID | `000000` (default; arbitrary in non-demo mode). The listener page reads the same value from `?room=` — share `https://<host>/?room=<id>` if you change it |
-
-For the now-playing card the plugin should `PUT {ingestUrl}/config/nowplaying`
-(Bearer, JSON object) on each media event and `{"playing": false}` when the
-playlist stops — see "Show info, now-playing & listener count" above.
+| FalconBeat WS URL | `ws://<docker-host>:8080` — LAN address; phones never use this |
+| Room ID | `000000` default; arbitrary in non-demo mode. The page reads `?room=<id>` — share `https://<host>/?room=<id>` if you change it |
 | Creator Secret | `CREATOR_SECRET` from `deploy/.env` |
+| Admin Secret | optional demo-mode secret — usually blank |
 | Ingest URL | `http://<docker-host>:8090` |
 | Ingest Token | `INGEST_TOKEN` from `deploy/.env` |
-| Public Media URL | `https://falconbeat.example.com/media` — must end in `/media` |
-| Listener Page URL | `https://falconbeat.example.com` (displayed on the plugin status page) |
-| Extra Delay (ms) | `0` = auto; manual nudge for light/audio alignment |
+| Public Media URL | `https://falconbeat.example.com/media` — **must end in `/media`** |
+| Extra Delay (ms) | `0` = auto; manual nudge added to the computed schedule delay |
+| Sync Gate (sec) | Hold each track's start until devices confirm loaded — `10` default, `0` = off. This is what makes FPP and the phones start on the same tick |
+| FPP Start Lag (ms) | `250` default — how long FPP takes to actually start media after the gate releases; tune by ear |
+| Preload Settle (ms) | `2500` default — when a track is pushed at play time, wait this long before PLAY so phones can download over WAN. Counts against the gate; `0` = off |
+| Disconnect grace (s) | how long the admin socket is held after playlist stop |
 
-When a playlist starts, the plugin pushes the playlist's audio to ingest, registers each
-track's public URL with BeatSync, then issues PLAY/PAUSE over the admin socket with the
-FPP position offset — phones seek to where the track *will* be when the scheduled action
-fires.
+## The listener page
+
+A fullscreen now-playing view: album art (extracted from each audio file's
+embedded tags — no external APIs), title/artist/album, live progress, a big
+play button, share button, "Up next" label, listener count, and an
+About-the-show bottom sheet you fill in from the settings page. The page
+publishes Media Session metadata, so Android/iOS show the track in the
+notification shade and lockscreen with working pause buttons.
+
+When the show goes off air for ~15s, joined listeners disconnect back to the
+play button and can tap in again when the show resumes.
+
+**Operator settings** live on the LAN only: `http://<docker-host>:8090/settings`
+— show name, tagline, hosted-by, schedule, location, description, links. Saved
+to `media/show.json` (the public edge 404s `/settings` by design).
+
+## Media lifecycle
+
+1. Plugin `PUT`s each track to ingest → file lands in `media/`
+2. Ingest extracts embedded metadata into sidecars: `<file>.art.jpg|png`
+   (album art) and `<file>.tags.json` (title/artist/album — the page prefers
+   these over FPP-reported tags)
+3. Plugin registers the public URL with BeatSync (`/upload/complete`) and
+   issues gated PLAY/PAUSE over the admin socket — phones preload, the server
+   waits for load ACKs, then everything fires on one scheduled timestamp
+4. When a track finishes, the plugin evicts it from the room queue and deletes
+   it (plus its sidecars) off `media/` — the volume doesn't fill up
+
+`media/nowplaying.json` is pushed per track/stop event
+(`{playing, title, artist, album, filename, next, updatedAtMs}`); the page
+polls it for track info, up-next, and off-air state (`updatedAtMs` stale
+>90s counts as off air).
 
 ## Repo layout
 
@@ -127,8 +140,9 @@ beatsync/   upstream BeatSync server, pinned submodule @ 94c38ab (unmodified)
 web/        Vite + React listener page (vendored @beatsync/shared)
 ingest/     zero-dep file receiver → media/ (runs on Bun in the container)
 bridge/     Node CLI admin client — protocol reference + manual test tool
-media/      audio store (volume-mounted; copyrighted show audio is git-ignored)
+media/      audio store (volume-mounted; show audio is git-ignored)
 deploy/     Dockerfile, entrypoint.sh, Caddyfile, docker-compose.yml, env examples
+unraid/     Unraid CA template + notes
 ```
 
 ## Development
@@ -148,14 +162,19 @@ cd bridge && cp .env.example .env
 node --env-file=.env src/cli.ts push "Song.mp3" && node src/cli.ts play "<publicUrl>"
 ```
 
-See `AGENTS.md` for the protocol details, timing math, and operational quirks
-(room lifetime, restart re-registration, BackupManager log noise).
+See `AGENTS.md` for the protocol details, timing math, and operational quirks.
 
 ## Caveats
 
-- Room→track registrations are in-memory — after a container restart the plugin
-  re-pushes/re-registers on its next event; files in `media/` persist.
+- Room→track registrations are in-memory — after a container restart the
+  plugin re-registers on its next media event; files in `media/` persist.
 - `/upload/complete` and ingest are unauthenticated-by-design LAN surfaces;
-  keep them off the public ingress (the Caddyfile already doesn't proxy them).
-- The BeatSync BackupManager wants S3; without it you'll see harmless
-  "backup failed" log lines every 60s.
+  keep them off the public ingress (the Caddyfile doesn't proxy them).
+- BeatSync's S3 backup/restore is disabled in the image (no R2 in this
+  deployment); room state is in-memory by design.
+
+## License & attribution
+
+Phone-side synchronization uses [BeatSync](https://github.com/freeman-jiang/beatsync)
+by freeman-jiang, vendored unmodified under the MIT License — see
+`beatsync/LICENSE`.

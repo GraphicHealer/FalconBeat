@@ -43,6 +43,9 @@ FROM oven/bun:1-slim
 COPY --from=caddy:2-alpine /usr/bin/caddy /usr/bin/caddy
 
 COPY --from=beatsync-build /bs/apps/server/dist /app/beatsync/dist
+# Upstream attribution — BeatSync is MIT © freeman-jiang; the license ships
+# with the bundled copy.
+COPY beatsync/LICENSE /app/beatsync/LICENSE-UPSTREAM
 COPY --from=web-build /web/dist /srv/falconbeat
 COPY ingest/server.ts /app/ingest/server.ts
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
