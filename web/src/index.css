@@ -71,6 +71,9 @@ body {
 .np-top {
   display: flex;
   align-items: center;
+  /* Grow to share free space with .np-art so the title+tagline center
+     vertically between the top edge and the album art. */
+  flex: 1;
   min-height: 3rem;
 }
 .np-top-side {
@@ -109,6 +112,7 @@ body {
   text-overflow: ellipsis;
 }
 .np-top-btn {
+  align-self: flex-start; /* stay pinned top-right while the bar stretches */
   width: 2.5rem;
   height: 2.5rem;
   display: grid;
