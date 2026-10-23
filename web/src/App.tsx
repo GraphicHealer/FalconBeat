@@ -128,15 +128,15 @@ function EqBackground() {
       const bars = 40;
       const bw = w / bars;
       for (let i = 0; i < bars; i++) {
-        // Spread bars across ~80% of the spectrum (up to ~19kHz @ 48k) —
-        // the top bins are permanently dead in music and would render as
-        // flat stubs on the right edge. Music rolls off ~1/f, so tilt
-        // boosts highs / settles lows or the display reads left-heavy.
-        const v = bins[Math.floor((i * bins.length * 0.8) / bars)];
+        // Spread bars across ~60% of the spectrum (up to ~14kHz @ 48k) —
+        // the top bins carry almost no musical energy and read as flat
+        // stubs on the right edge. Music rolls off ~1/f, so tilt boosts
+        // highs / settles lows or the display reads left-heavy.
+        const v = bins[Math.floor((i * bins.length * 0.6) / bars)];
         const tilt = 0.4 + 0.6 * (i / (bars - 1));
-        // sqrt expands low levels and softens the top; capped well below
-        // the canvas edge so peaks never visibly clip.
-        const bh = Math.sqrt((v / 255) * tilt) * h * 0.55;
+        // sqrt expands low levels and softens the top; capped below the
+        // canvas edge so peaks never visibly clip.
+        const bh = Math.sqrt((v / 255) * tilt) * h * 0.73;
         ctx.fillRect(i * bw + bw * 0.18, h - bh, bw * 0.64, bh);
       }
     };
