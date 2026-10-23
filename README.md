@@ -90,7 +90,7 @@ ingress:
 Or run cloudflared as a sidecar container — a commented-out service is in
 `deploy/docker-compose.yml` (set `CLOUDFLARED_TOKEN` in `.env`).
 
-## Plugin settings (FPP → Content Setup → FalconBeat)
+## Plugin settings (FPP → Input/Output Setup → FalconBeat)
 
 | Plugin field | Value |
 |---|---|

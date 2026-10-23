@@ -57,7 +57,7 @@ Devices need HTTPS (WebAudio/WSS), so put a Cloudflare Tunnel in front of the
 WebUI port — run cloudflared from Community Apps on Unraid, or on any host on the
 LAN, with ingress `falconbeat.yourdomain.com → http://<unraid-ip>:8000`.
 
-## Plugin settings (FPP → Content Setup → FalconBeat)
+## Plugin settings (FPP → Input/Output Setup → FalconBeat)
 
 - FalconBeat URL: `http://<unraid-ip>:8000`
 - Token: the same value as the template's FalconBeat Token
