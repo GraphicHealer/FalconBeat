@@ -117,6 +117,23 @@ absolute-URL validation would 400. Re-check after submodule bumps (grep
 `publicUrl: z.string().url()` in that file — UploadUrlResponseSchema keeps
 the strict check, only the request schema is relaxed).
 
+A third patch accepts `Authorization: Bearer` as an alternative to
+`?creator=` on the WS upgrade (`apps/server/src/routes/websocket.ts`) —
+the plugin never puts the token in a URL.
+
+A fourth adds optional `executeAtServerTime` to `PlayActionSchema` +
+`PauseActionSchema` (`packages/shared/types/WSRequest.ts`) and honors it
+over the computed schedule delay in `broadcastPlay`/`handlePause`
+(`apps/server/src/managers/RoomManager.ts`,
+`apps/server/src/websocket/handlers/pause.ts`) — the plugin pins absolute
+start instants so every song gets the same deterministic bias. The
+late-joiner `syncClient` path is floored at
+`Math.max(playbackState.serverTimeToExecute, getScheduledExecutionTime({+1500ms}))`
+so a joiner mid-pending-schedule can't be told to resume at a negative
+position. Old images ignore the field silently (zod strips it) — the
+plugin detects that via the echo and falls back. Re-check all seds land
+after a submodule bump.
+
 A third patch, in `apps/server/src/routes/websocket.ts`, accepts
 `Authorization: Bearer <token>` as an alternative to `?creator=` on the WS
 upgrade — the FPP plugin sends the header so the token never lands in a
@@ -152,10 +169,16 @@ Caddy. BeatSync :8080 and ingest :8090 are never published.
 - `PLAY`/`PAUSE` broadcast `SCHEDULED_ACTION` with `serverTimeToExecute` =
   `epochNow + max(400ms, 1.5*maxRTT+200, maxCompensation+200)`, capped 3s.
   `epochNow() = performance.timeOrigin + performance.now()` (ms since epoch).
+  With the Dockerfile patch a client can pin the instant via
+  `executeAtServerTime` on the request — the echo returns the honored stamp,
+  which doubles as the capability probe (old builds strip the field and the
+  echo shows the server-chosen delay instead).
 - `trackTimeSeconds` in PLAY is the **playback offset** — send FPP position +
   expected delay to make devices seek into the track aligned to the sequence clock.
 - Late joiners: client sends `SYNC` after its audio-ready gesture → server unicasts
-  a scheduled PLAY at the computed resume position (+1.5s extra lead).
+  a scheduled PLAY at the computed resume position (+1.5s extra lead), floored
+  at any pending playback state's execute time so a future-dated schedule can't
+  produce a negative resume position.
 - NTP: coded probe **pairs** (25ms apart, groupId shared), every 2.5s steady-state
   (50ms for first 16 measurements). Keep min-RTT measurement's offset.
 - Server sends `LIVENESS_PING` after 15s silence → reply `LIVENESS_PONG`.

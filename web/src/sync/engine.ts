@@ -555,14 +555,24 @@ export class SyncEngine {
       return;
     }
 
-    this.stopPlaybackLocal();
-
     const ctx = audioEngine.getContext();
+    const startTime = ctx.currentTime + delaySec;
+
+    // The outgoing node stops AT the new track's start, not now — a PLAY
+    // scheduled ahead (the plugin pre-schedules the next song near track
+    // end) must not leave dead air behind the current one. A stale pending
+    // node is superseded the same way: stop before its start = never plays.
+    const prev = this.currentSource;
+    if (prev) {
+      try {
+        prev.onended = null;
+        prev.stop(startTime);
+      } catch {}
+    }
+
     const node = audioEngine.createBufferSource();
     node.buffer = source.buffer;
     node.connect(audioEngine.getInputNode());
-
-    const startTime = ctx.currentTime + delaySec;
     node.onended = () => {
       // Only react if this node is still the current one and it ran to the end
       if (this.currentSource === node && this.isPlaying) {

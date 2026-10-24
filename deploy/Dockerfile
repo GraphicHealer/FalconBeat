@@ -35,6 +35,17 @@ COPY beatsync/packages/shared ./packages/shared
 # listeners resolve it against whichever origin they arrived on — upstream
 # insists on an absolute URL. The route is Bearer-gated at the edge anyway.
 RUN sed -i '/UploadCompleteSchema = z.object/,/^});/s/\.url()//' packages/shared/types/HTTPRequest.ts
+# FalconBeat: optional executeAtServerTime on PLAY/PAUSE — the plugin
+# pre-schedules the next track during the current one so devices start on
+# a predicted instant instead of always now+dynamicDelay. The schemas would
+# otherwise strip the unknown field; the SCHEDULED_ACTION echo returns the
+# honored timestamp so clients can detect support. syncClient's floor keeps
+# a late joiner from being scheduled ahead of a future-dated play.
+RUN sed -i '/PlayActionSchema = z.object/,/^});/s/trackTimeSeconds: z.number(),/trackTimeSeconds: z.number(),\n  executeAtServerTime: z.number().optional(),/' packages/shared/types/WSRequest.ts \
+ && sed -i '/PauseActionSchema = z.object/,/^});/s/trackTimeSeconds: z.number(),/trackTimeSeconds: z.number(),\n  executeAtServerTime: z.number().optional(),/' packages/shared/types/WSRequest.ts \
+ && sed -i 's/const serverTimeToExecute = this.getScheduledExecutionTime();/const serverTimeToExecute = playAction.executeAtServerTime ?? this.getScheduledExecutionTime();/' apps/server/src/managers/RoomManager.ts \
+ && sed -i '/const serverTimeToExecute = this.getScheduledExecutionTime({/,/^    });/c\    const serverTimeToExecute = Math.max(\n      this.playbackState.serverTimeToExecute,\n      this.getScheduledExecutionTime({\n        extraOffsetMs: 1500, \/\/ Another extra 1.5 seconds to sync\n      })\n    );' apps/server/src/managers/RoomManager.ts \
+ && sed -i 's/const serverTimeToExecute = room.getScheduledExecutionTime();/const serverTimeToExecute = message.executeAtServerTime ?? room.getScheduledExecutionTime();/' apps/server/src/websocket/handlers/pause.ts
 WORKDIR /bs/apps/server
 RUN bun run build
 
