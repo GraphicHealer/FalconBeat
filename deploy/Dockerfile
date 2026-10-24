@@ -30,7 +30,9 @@ COPY beatsync/packages/shared ./packages/shared
 # track transitions. `git apply` fails the build loudly if a submodule bump
 # drifts the context — regenerate with `git -C beatsync diff > deploy/beatsync.patch`.
 COPY deploy/beatsync.patch /tmp/beatsync.patch
-RUN git apply -v /tmp/beatsync.patch
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/* \
+ && git apply -v /tmp/beatsync.patch
 WORKDIR /bs/apps/server
 RUN bun run build
 
