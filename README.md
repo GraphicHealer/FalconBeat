@@ -114,9 +114,7 @@ Or run cloudflared as a sidecar container — a commented-out service is in
 
 | Plugin field | Value |
 |---|---|
-| Sync Offset | Manual offset added to the track position sent to devices |
-| Sync Gate | Hold each track's start until devices confirm loaded — `10`s default, `0` = off. This is what makes FPP and the devices start on the same tick |
-| Preload Settle | `2500`ms default — when a track is pushed at play time, wait this long before PLAY so devices can download over WAN. Counts against the gate; `0` = off |
+| Sync Offset | Shifts where devices join the track — raise it if the audio trails the lights, lower it if it runs ahead |
 | Extra Delay | `0` = auto; manual nudge added to the computed schedule delay |
 | Disconnect grace | How long the admin socket is held after playlist stop |
 
@@ -148,9 +146,11 @@ the FPP plugin is the single source of truth.
    (album art) and `<file>.tags.json` (title/artist/album — the page prefers
    these over FPP-reported tags)
 3. Plugin registers the track's `/media` URL with BeatSync
-   (`/upload/complete`, Bearer-gated at the edge) and issues gated
-   PLAY/PAUSE over the admin socket — devices preload, the server waits for
-   load ACKs, then everything fires on one scheduled timestamp. URLs are
+   (`/upload/complete`, Bearer-gated at the edge) and sends PLAY/PAUSE over
+   the admin socket — devices preload on registration, and PLAY carries the
+   FPP position + expected delay so everything fires on one scheduled
+   timestamp. FPP callbacks are fire-and-forget: a device that joins mid-
+   track lands at the right offset rather than holding the show. URLs are
    relative, so devices always fetch audio from whatever origin they loaded
    the page from — LAN and tunneled listeners alike
 4. When a track finishes, the plugin evicts it from the room queue and deletes

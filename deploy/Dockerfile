@@ -40,8 +40,8 @@ RUN bun run build
 
 # ── Stage 3: Vite SPA build ──────────────────────────────────────────
 FROM node:24-alpine AS web-build
-# Release tag baked into the page (shown tiny in the top bar); "dev" for
-# local builds where no version is passed.
+# Release tag baked into the page (shown in the Show Info footer); "dev"
+# for local builds where no version is passed.
 ARG APP_VERSION=dev
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./

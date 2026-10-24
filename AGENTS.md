@@ -16,7 +16,8 @@ same-origin, so there's no public-hostname setting).
   Runs in **normal (non-demo) mode**, no S3 needed: `/upload/complete` only
   stores a URL on the room + broadcasts SET_AUDIO_SOURCES — it never touches
   S3. The presign endpoint is the only S3-coupled part and we don't call it.
-  Admin auth: `?creator=$CREATOR_SECRET` on the WS URL.
+  Admin auth: `Authorization: Bearer $CREATOR_SECRET` on the WS upgrade
+  (`?creator=$CREATOR_SECRET` on the URL also works — kept for bridge/dev).
   Demo mode (`DEMO=1`, startup-scanned local audio dir) remains a fallback for
   a fully static playlist — it cannot accept runtime uploads.
   Update flow: bump submodule SHA, re-copy `packages/shared` into
@@ -56,8 +57,9 @@ same-origin, so there's no public-hostname setting).
   `{$BEATSYNC_UPSTREAM}`/`{$INGEST_UPSTREAM}` also work split across
   containers.
   One shared secret: `FALCONBEAT_TOKEN` in .env feeds ingest Bearer,
-  BeatSync `?creator=`, and the Caddy admin-route gate. Legacy
-  `INGEST_TOKEN`/`CREATOR_SECRET` still work as per-gate overrides.
+  BeatSync admin auth (Bearer on the WS upgrade, or `?creator=`), and the
+  Caddy admin-route gate. Legacy `INGEST_TOKEN`/`CREATOR_SECRET` still work
+  as per-gate overrides.
 
 ## Audio push flow (no S3)
 
@@ -67,7 +69,8 @@ same-origin, so there's no public-hostname setting).
    gated in Caddy since the upstream endpoint is unauthenticated)
    `{roomId, originalName, publicUrl: "/media/song.mp3"}` →
    room gets the source, devices preload it
-3. Plugin WS `ws://falconbeat-host:<edge>/ws?...&creator=<token>`:
+3. Plugin WS `ws://falconbeat-host:<edge>/ws?roomId&username&clientId` with
+   `Authorization: Bearer <token>` on the upgrade:
    `{type:"PLAY", audioSource: publicUrl, trackTimeSeconds: pos}`
 
 Devices fetch `/media/song.mp3` from their own origin — relative URLs mean
@@ -135,12 +138,16 @@ Caddy. BeatSync :8080 and ingest :8090 are never published.
 
 - No HTTP play endpoint — playback control is WS-only. Rooms auto-create on
   first join; presigned-upload requires the room to already exist.
-- Non-demo admin: `?creator=` secret (or first-joiner). `?admin=` is demo-only.
+- Non-demo admin: `?creator=` secret (or first-joiner) — our image also
+  accepts `Authorization: Bearer` on the upgrade. `?admin=` is demo-only.
 - Demo mode scans `DEMO_AUDIO_DIR` **once at startup** — runtime pushes are
   impossible (404 + PLAY rejected). Use normal mode for plugin-driven audio.
 - Non-demo PLAY goes through load-coordination (LOAD_AUDIO_SOURCE → client
   ACKs → play when all loaded or 3s timeout). Devices preloaded on
-  SET_AUDIO_SOURCES ACK fast; gate FPP start on the SCHEDULED_ACTION echo.
+  SET_AUDIO_SOURCES ACK fast. The SCHEDULED_ACTION echo remains the only
+  acceptance signal — the plugin's callbacks are fire-and-forget and PLAY
+  carries FPP position + expected delay, so a device that joins mid-track
+  lands at the right offset instead of holding the show.
 - `/discover` only reports rooms with ≥1 connected client that are playing.
 - `PLAY`/`PAUSE` broadcast `SCHEDULED_ACTION` with `serverTimeToExecute` =
   `epochNow + max(400ms, 1.5*maxRTT+200, maxCompensation+200)`, capped 3s.
