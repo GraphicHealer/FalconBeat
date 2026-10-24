@@ -119,7 +119,8 @@ the strict check, only the request schema is relaxed).
 
 A third patch accepts `Authorization: Bearer` as an alternative to
 `?creator=` on the WS upgrade (`apps/server/src/routes/websocket.ts`) —
-the plugin never puts the token in a URL.
+the plugin sends the header so the token never lands in a proxy access
+log; `?creator=` still works (bridge/dev tooling).
 
 A fourth adds optional `executeAtServerTime` to `PlayActionSchema` +
 `PauseActionSchema` (`packages/shared/types/WSRequest.ts`) and honors it
@@ -133,11 +134,6 @@ so a joiner mid-pending-schedule can't be told to resume at a negative
 position. Old images ignore the field silently (zod strips it) — the
 plugin detects that via the echo and falls back. Re-check all seds land
 after a submodule bump.
-
-A third patch, in `apps/server/src/routes/websocket.ts`, accepts
-`Authorization: Bearer <token>` as an alternative to `?creator=` on the WS
-upgrade — the FPP plugin sends the header so the token never lands in a
-proxy access log. `?creator=` still works (bridge/dev tooling).
 
 Room→source bindings are in-memory only: a server/container restart forgets
 registered tracks even though the files persist in media/. The plugin must

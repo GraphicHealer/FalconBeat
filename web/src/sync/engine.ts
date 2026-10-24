@@ -211,6 +211,11 @@ export class SyncEngine {
       this.reconnectAttempt = 0;
       this.clearReconnectTimers();
       this.scheduleHeartbeat();
+      // Rejoin path: teardownSocket() nulls onclose before close(), so the
+      // isSynced reset never ran — the estimate is still valid and the
+      // converge path (which re-sends SYNC) is gated on !isSynced, so it
+      // would never fire. Request the room state here instead.
+      if (this.isSynced) this.requestSync();
       this.emit();
     };
 
