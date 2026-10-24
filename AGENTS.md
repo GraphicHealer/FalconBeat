@@ -114,6 +114,11 @@ absolute-URL validation would 400. Re-check after submodule bumps (grep
 `publicUrl: z.string().url()` in that file — UploadUrlResponseSchema keeps
 the strict check, only the request schema is relaxed).
 
+A third patch, in `apps/server/src/routes/websocket.ts`, accepts
+`Authorization: Bearer <token>` as an alternative to `?creator=` on the WS
+upgrade — the FPP plugin sends the header so the token never lands in a
+proxy access log. `?creator=` still works (bridge/dev tooling).
+
 Room→source bindings are in-memory only: a server/container restart forgets
 registered tracks even though the files persist in media/. The plugin must
 re-run push (or at least upload/complete) after any restart — cheap since

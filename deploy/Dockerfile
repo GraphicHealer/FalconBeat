@@ -25,6 +25,10 @@ COPY beatsync/apps/server/src ./apps/server/src
 # failed" stack spam and the slow backup-waiting shutdown. Submodule stays
 # pristine; the patch exists only in this image build.
 RUN sed -i 's/if (!IS_DEMO_MODE) {/if (false) {/' apps/server/src/index.ts
+# FalconBeat: accept Authorization: Bearer as an alternative to ?creator=
+# on the WS upgrade — a query-string token ends up in every proxy's access
+# log. The FPP plugin sends the header; ?creator= stays for bridge/dev use.
+RUN sed -i 's|const creatorSecret = url.searchParams.get("creator");|const creatorSecret = url.searchParams.get("creator") \|\| (req.headers.get("authorization") \|\| "").replace(/^Bearer +/i, "");|' apps/server/src/routes/websocket.ts
 COPY beatsync/apps/server/tsconfig.json ./apps/server/tsconfig.json
 COPY beatsync/packages/shared ./packages/shared
 # FalconBeat: the plugin registers path-only publicUrl (/media/<name>) so
