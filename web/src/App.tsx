@@ -445,7 +445,7 @@ function Listener() {
         title,
         artist: artist ?? "",
         album: album ?? show.showName ?? "",
-        artwork: (offAir ? ["/OffAir.png"] : artCandidates(trackFile))
+        artwork: (offAir ? ["/OffAir.webp"] : artCandidates(trackFile))
           .map((src) => ({ src })),
       });
       navigator.mediaSession.playbackState = s.isPlaying
@@ -496,7 +496,7 @@ function Listener() {
       <section className="np-art">
         <Art
           filename={trackFile}
-          src={offAir ? "/OffAir.png" : undefined}
+          src={offAir ? "/OffAir.webp" : undefined}
           onTint={setTint}
         />
       </section>
