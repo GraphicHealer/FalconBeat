@@ -1,0 +1,186 @@
+diff --git a/apps/server/src/index.ts b/apps/server/src/index.ts
+index 8e63157..712b3d1 100644
+--- a/apps/server/src/index.ts
++++ b/apps/server/src/index.ts
+@@ -118,7 +118,7 @@ if (IS_DEMO_MODE) {
+   console.log(`🔑 Admin secret: ${ADMIN_SECRET}`);
+ }
+ 
+-if (!IS_DEMO_MODE) {
++if (false) {
+   // Restore state from backup on startup
+   BackupManager.restoreState().catch((error) => {
+     console.error("Failed to restore state on startup:", error);
+@@ -139,7 +139,7 @@ const shutdown = async () => {
+   console.log("\n⚠️ Shutting down...");
+ 
+   void server.stop(); // Stop accepting new connections
+-  if (!IS_DEMO_MODE) {
++  if (false) {
+     await BackupManager.backupState(); // Save state
+   }
+ 
+diff --git a/apps/server/src/managers/RoomManager.ts b/apps/server/src/managers/RoomManager.ts
+index cde1d4f..8370d37 100644
+--- a/apps/server/src/managers/RoomManager.ts
++++ b/apps/server/src/managers/RoomManager.ts
+@@ -119,6 +119,10 @@ export class RoomManager {
+   private onClientCountChange?: () => void;
+   private onBecameEmpty?: () => void;
+   private playbackState: RoomPlaybackState = INITIAL_PLAYBACK_STATE;
++  // FalconBeat: the last displaced playback state — a play scheduled into
++  // the future overwrites playbackState before it starts sounding, so
++  // syncClient needs this to tell joiners what is actually audible.
++  private prevPlaybackState?: RoomPlaybackState;
+   private playbackControlsPermissions: PlaybackControlsPermissionsType = "ADMIN_ONLY";
+   private globalVolume = 1.0;
+   private lowPassFreq: number = LOW_PASS_CONSTANTS.MAX_FREQ; // Default bypassed (full spectrum)
+@@ -282,7 +286,7 @@ export class RoomManager {
+   }
+ 
+   private broadcastPlay(playAction: PlayActionType, server: BunServer): void {
+-    const serverTimeToExecute = this.getScheduledExecutionTime();
++    const serverTimeToExecute = playAction.executeAtServerTime ?? this.getScheduledExecutionTime();
+     const success = this.updatePlaybackSchedulePlay(playAction, serverTimeToExecute);
+ 
+     if (success) {
+@@ -903,6 +907,7 @@ export class RoomManager {
+       return false;
+     }
+ 
++    this.prevPlaybackState = this.playbackState; // FalconBeat: keep the displaced state for syncClient
+     this.playbackState = {
+       type: "playing",
+       audioSource: playSchema.audioSource,
+@@ -922,14 +927,34 @@ export class RoomManager {
+       return; // Nothing to do - client will play on next scheduled action
+     }
+ 
+-    const serverTimeWhenPlaybackStarted = this.playbackState.serverTimeToExecute;
+-    const trackPositionSecondsWhenPlaybackStarted = this.playbackState.trackPositionSeconds;
+     const now = epochNow();
+ 
+-    // Use dynamic scheduling based on max client RTT
+-    const serverTimeToExecute = this.getScheduledExecutionTime({
+-      extraOffsetMs: 1500, // Another extra 1.5 seconds to sync
+-    });
++    // FalconBeat: if playbackState is a play still in the future (the plugin
++    // pre-schedules the next track with executeAtServerTime), it hasn't taken
++    // over the speakers yet — the track actually audible is the state it
++    // displaced. Sync the joiner to that one; falling back to playbackState
++    // (and its own execute time as the floor) keeps old behavior when nothing
++    // sounded before the pending play.
++    const pending = this.playbackState.serverTimeToExecute > now ? this.playbackState : null;
++    const sounding =
++      pending &&
++      this.prevPlaybackState &&
++      this.prevPlaybackState.type === "playing" &&
++      this.prevPlaybackState.serverTimeToExecute <= now
++        ? this.prevPlaybackState
++        : this.playbackState;
++
++    const serverTimeWhenPlaybackStarted = sounding.serverTimeToExecute;
++    const trackPositionSecondsWhenPlaybackStarted = sounding.trackPositionSeconds;
++
++    // Use dynamic scheduling based on max client RTT, floored at the sounding
++    // state's own execute time — a future-dated play can't "resume" earlier.
++    const serverTimeToExecute = Math.max(
++      sounding.serverTimeToExecute,
++      this.getScheduledExecutionTime({
++        extraOffsetMs: 1500, // Another extra 1.5 seconds to sync
++      })
++    );
+ 
+     // Calculate how much time has elapsed since playback started
+     const timeElapsedSincePlaybackStarted = now - serverTimeWhenPlaybackStarted;
+@@ -952,12 +977,30 @@ export class RoomManager {
+         type: "SCHEDULED_ACTION",
+         scheduledAction: {
+           type: "PLAY",
+-          audioSource: this.playbackState.audioSource,
++          audioSource: sounding.audioSource,
+           trackTimeSeconds: resumeTrackTimeSeconds, // Use the calculated position
+         },
+         serverTimeToExecute: serverTimeToExecute,
+       },
+     });
++
++    // FalconBeat: also forward the pending play so the joiner arms the same
++    // seamless handoff everyone else already has — its engine stops the
++    // sounding node at exactly this instant.
++    if (pending) {
++      sendUnicast({
++        ws,
++        message: {
++          type: "SCHEDULED_ACTION",
++          scheduledAction: {
++            type: "PLAY",
++            audioSource: pending.audioSource,
++            trackTimeSeconds: pending.trackPositionSeconds,
++          },
++          serverTimeToExecute: pending.serverTimeToExecute,
++        },
++      });
++    }
+   }
+ 
+   processIP({
+diff --git a/apps/server/src/routes/websocket.ts b/apps/server/src/routes/websocket.ts
+index 03a994b..33aca39 100644
+--- a/apps/server/src/routes/websocket.ts
++++ b/apps/server/src/routes/websocket.ts
+@@ -10,7 +10,7 @@ export const handleWebSocketUpgrade = (req: Request, server: BunServer) => {
+   const username = url.searchParams.get("username");
+   const clientId = url.searchParams.get("clientId");
+   const adminSecret = url.searchParams.get("admin");
+-  const creatorSecret = url.searchParams.get("creator");
++  const creatorSecret = url.searchParams.get("creator") || (req.headers.get("authorization") || "").replace(/^Bearer +/i, "");
+ 
+   if (!roomId || !username || !clientId) {
+     // Check which parameters are missing and log them
+diff --git a/apps/server/src/websocket/handlers/pause.ts b/apps/server/src/websocket/handlers/pause.ts
+index 8bd667b..c824647 100644
+--- a/apps/server/src/websocket/handlers/pause.ts
++++ b/apps/server/src/websocket/handlers/pause.ts
+@@ -7,7 +7,7 @@ export const handlePause: HandlerFunction<ExtractWSRequestFrom["PAUSE"]> = ({ ws
+   const { room } = requireCanMutate(ws);
+ 
+   // Use dynamic scheduling based on max client RTT
+-  const serverTimeToExecute = room.getScheduledExecutionTime();
++  const serverTimeToExecute = message.executeAtServerTime ?? room.getScheduledExecutionTime();
+ 
+   // Update playback state
+   const success = room.updatePlaybackSchedulePause(message, serverTimeToExecute);
+diff --git a/packages/shared/types/HTTPRequest.ts b/packages/shared/types/HTTPRequest.ts
+index ffd8002..501869c 100644
+--- a/packages/shared/types/HTTPRequest.ts
++++ b/packages/shared/types/HTTPRequest.ts
+@@ -34,7 +34,7 @@ export type UploadUrlResponseType = z.infer<typeof UploadUrlResponseSchema>;
+ export const UploadCompleteSchema = z.object({
+   roomId: z.string(),
+   originalName: z.string(),
+-  publicUrl: z.string().url(),
++  publicUrl: z.string(),
+ });
+ export type UploadCompleteType = z.infer<typeof UploadCompleteSchema>;
+ 
+diff --git a/packages/shared/types/WSRequest.ts b/packages/shared/types/WSRequest.ts
+index 05eb046..661728d 100644
+--- a/packages/shared/types/WSRequest.ts
++++ b/packages/shared/types/WSRequest.ts
+@@ -52,6 +52,7 @@ export const NTPRequestPacketSchema = z.object({
+ export const PlayActionSchema = z.object({
+   type: z.literal(ClientActionEnum.enum.PLAY),
+   trackTimeSeconds: z.number(),
++  executeAtServerTime: z.number().optional(),
+   audioSource: z.string(),
+ });
+ 
+@@ -59,6 +60,7 @@ export const PauseActionSchema = z.object({
+   type: z.literal(ClientActionEnum.enum.PAUSE),
+   audioSource: z.string(),
+   trackTimeSeconds: z.number(),
++  executeAtServerTime: z.number().optional(),
+ });
+ 
+ const StartSpatialAudioSchema = z.object({

@@ -101,39 +101,41 @@ BeatSync only ever stores the URL.
   socket is isAdmin, so it doesn't count).
 - Caddy serves `/media/*.json` with `no-cache`; audio keeps `immutable`.
 
-S3 backups are disabled in the image: the Dockerfile seds upstream index.ts's
-two `if (!IS_DEMO_MODE)` blocks (startup restore + 60s backup loop + SIGTERM
-final backup) to `if (false)` before bundling — no R2 in our deployment, room
-state is in-memory anyway. If upstream's index.ts changes shape around those
-blocks, re-check the sed still lands (grep `!IS_DEMO_MODE` in index.ts after
-a submodule bump). Residual S3 noise: one caught `Room cleanup failed` line
-per 60s-idle room deletion — room is still removed from memory regardless.
+All upstream deltas live in **`deploy/beatsync.patch`** — a unified diff
+applied with `git apply` in the image build (the submodule itself stays
+pristine). The build fails loudly if a submodule bump drifts the context.
+To regenerate: edit the beatsync working copy, then
+`git -C beatsync diff > deploy/beatsync.patch` — verify with
+`git -C beatsync apply --check ../deploy/beatsync.patch` on a clean tree.
+Contents:
 
-A second build-time patch in the same stage relaxes `UploadCompleteSchema`'s
-`publicUrl` from `z.string().url()` to `z.string()` in
-`packages/shared/types/HTTPRequest.ts` — the plugin registers path-only
-`/media/<name>` URLs that listeners resolve same-origin, which upstream's
-absolute-URL validation would 400. Re-check after submodule bumps (grep
-`publicUrl: z.string().url()` in that file — UploadUrlResponseSchema keeps
-the strict check, only the request schema is relaxed).
-
-A third patch accepts `Authorization: Bearer` as an alternative to
-`?creator=` on the WS upgrade (`apps/server/src/routes/websocket.ts`) —
-the plugin sends the header so the token never lands in a proxy access
-log; `?creator=` still works (bridge/dev tooling).
-
-A fourth adds optional `executeAtServerTime` to `PlayActionSchema` +
-`PauseActionSchema` (`packages/shared/types/WSRequest.ts`) and honors it
-over the computed schedule delay in `broadcastPlay`/`handlePause`
-(`apps/server/src/managers/RoomManager.ts`,
-`apps/server/src/websocket/handlers/pause.ts`) — the plugin pins absolute
-start instants so every song gets the same deterministic bias. The
-late-joiner `syncClient` path is floored at
-`Math.max(playbackState.serverTimeToExecute, getScheduledExecutionTime({+1500ms}))`
-so a joiner mid-pending-schedule can't be told to resume at a negative
-position. Old images ignore the field silently (zod strips it) — the
-plugin detects that via the echo and falls back. Re-check all seds land
-after a submodule bump.
+- `apps/server/src/index.ts`: `if (!IS_DEMO_MODE)` → `if (false)` on the
+  two S3 backup blocks (startup restore + 60s loop + SIGTERM final) — no
+  R2 in this deployment; kills the per-minute "State backup failed" stack
+  spam and slow backup-waiting shutdown. Residual noise: one caught
+  `Room cleanup failed` line per 60s-idle room deletion — the room is
+  still removed regardless.
+- `packages/shared/types/HTTPRequest.ts`: `UploadCompleteSchema.publicUrl`
+  relaxed to `z.string()` — the plugin registers path-only `/media/<name>`
+  URLs listeners resolve same-origin; upstream's absolute-URL check would
+  400. `UploadUrlResponseSchema` keeps the strict check.
+- `apps/server/src/routes/websocket.ts`: accepts `Authorization: Bearer`
+  as an alternative to `?creator=` on the WS upgrade — the plugin sends
+  the header so the token never lands in a proxy access log; `?creator=`
+  still works (bridge/dev tooling).
+- `packages/shared/types/WSRequest.ts` + `RoomManager.ts` + `pause.ts`:
+  optional `executeAtServerTime` on PLAY/PAUSE honored over the computed
+  schedule delay — the plugin pins absolute start instants (pre-scheduled
+  next-track transitions); the SCHEDULED_ACTION echo returns the honored
+  stamp, which doubles as the capability probe (old images strip the
+  field → echo shows a server-chosen time → plugin falls back).
+- `RoomManager.ts` `syncClient` + `prevPlaybackState`: a future-dated
+  PLAY overwrites `playbackState` before it starts sounding, so the state
+  it displaced is stashed at overwrite time. A late joiner mid-pending-
+  schedule is synced to the *sounding* track at the right resume position
+  AND gets the pending action forwarded — its engine arms the same
+  seamless handoff. Without the stash a joiner would wait out the pending
+  play (or compute a negative resume position).
 
 Room→source bindings are in-memory only: a server/container restart forgets
 registered tracks even though the files persist in media/. The plugin must
@@ -172,9 +174,10 @@ Caddy. BeatSync :8080 and ingest :8090 are never published.
 - `trackTimeSeconds` in PLAY is the **playback offset** — send FPP position +
   expected delay to make devices seek into the track aligned to the sequence clock.
 - Late joiners: client sends `SYNC` after its audio-ready gesture → server unicasts
-  a scheduled PLAY at the computed resume position (+1.5s extra lead), floored
-  at any pending playback state's execute time so a future-dated schedule can't
-  produce a negative resume position.
+  a scheduled PLAY at the computed resume position (+1.5s extra lead). If a
+  future-dated play is pending, the joiner is synced to the *sounding* track
+  (the displaced `prevPlaybackState`) and the pending action is forwarded too,
+  so they arm the same seamless handoff as everyone else.
 - NTP: coded probe **pairs** (25ms apart, groupId shared), every 2.5s steady-state
   (50ms for first 16 measurements). Keep min-RTT measurement's offset.
 - Server sends `LIVENESS_PING` after 15s silence → reply `LIVENESS_PONG`.

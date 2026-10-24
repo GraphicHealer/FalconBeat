@@ -19,33 +19,18 @@ FROM oven/bun:1 AS beatsync-build
 WORKDIR /bs
 COPY --from=beatsync-deps /bs /bs
 COPY beatsync/apps/server/src ./apps/server/src
-# FalconBeat: no R2 in our deployment — neuter upstream's S3 backup hooks
-# (startup restore + 60s backup loop + SIGTERM final backup), all gated on
-# `if (!IS_DEMO_MODE)` in index.ts. Kills the per-minute "State backup
-# failed" stack spam and the slow backup-waiting shutdown. Submodule stays
-# pristine; the patch exists only in this image build.
-RUN sed -i 's/if (!IS_DEMO_MODE) {/if (false) {/' apps/server/src/index.ts
-# FalconBeat: accept Authorization: Bearer as an alternative to ?creator=
-# on the WS upgrade — a query-string token ends up in every proxy's access
-# log. The FPP plugin sends the header; ?creator= stays for bridge/dev use.
-RUN sed -i 's|const creatorSecret = url.searchParams.get("creator");|const creatorSecret = url.searchParams.get("creator") \|\| (req.headers.get("authorization") \|\| "").replace(/^Bearer +/i, "");|' apps/server/src/routes/websocket.ts
 COPY beatsync/apps/server/tsconfig.json ./apps/server/tsconfig.json
 COPY beatsync/packages/shared ./packages/shared
-# FalconBeat: the plugin registers path-only publicUrl (/media/<name>) so
-# listeners resolve it against whichever origin they arrived on — upstream
-# insists on an absolute URL. The route is Bearer-gated at the edge anyway.
-RUN sed -i '/UploadCompleteSchema = z.object/,/^});/s/\.url()//' packages/shared/types/HTTPRequest.ts
-# FalconBeat: optional executeAtServerTime on PLAY/PAUSE — the plugin
-# pre-schedules the next track during the current one so devices start on
-# a predicted instant instead of always now+dynamicDelay. The schemas would
-# otherwise strip the unknown field; the SCHEDULED_ACTION echo returns the
-# honored timestamp so clients can detect support. syncClient's floor keeps
-# a late joiner from being scheduled ahead of a future-dated play.
-RUN sed -i '/PlayActionSchema = z.object/,/^});/s/trackTimeSeconds: z.number(),/trackTimeSeconds: z.number(),\n  executeAtServerTime: z.number().optional(),/' packages/shared/types/WSRequest.ts \
- && sed -i '/PauseActionSchema = z.object/,/^});/s/trackTimeSeconds: z.number(),/trackTimeSeconds: z.number(),\n  executeAtServerTime: z.number().optional(),/' packages/shared/types/WSRequest.ts \
- && sed -i 's/const serverTimeToExecute = this.getScheduledExecutionTime();/const serverTimeToExecute = playAction.executeAtServerTime ?? this.getScheduledExecutionTime();/' apps/server/src/managers/RoomManager.ts \
- && sed -i '/const serverTimeToExecute = this.getScheduledExecutionTime({/,/^    });/c\    const serverTimeToExecute = Math.max(\n      this.playbackState.serverTimeToExecute,\n      this.getScheduledExecutionTime({\n        extraOffsetMs: 1500, \/\/ Another extra 1.5 seconds to sync\n      })\n    );' apps/server/src/managers/RoomManager.ts \
- && sed -i 's/const serverTimeToExecute = room.getScheduledExecutionTime();/const serverTimeToExecute = message.executeAtServerTime ?? room.getScheduledExecutionTime();/' apps/server/src/websocket/handlers/pause.ts
+# FalconBeat: upstream deltas live in deploy/beatsync.patch — applied here,
+# kept out of the submodule. It neuters the S3 backup hooks (no R2 in this
+# deployment), accepts Authorization: Bearer on the WS upgrade (the plugin's
+# token never lands in a proxy log), relaxes upload/complete's publicUrl to
+# path-only /media/<name>, and adds executeAtServerTime to PLAY/PAUSE +
+# syncClient so the plugin can pin absolute start instants for pre-scheduled
+# track transitions. `git apply` fails the build loudly if a submodule bump
+# drifts the context — regenerate with `git -C beatsync diff > deploy/beatsync.patch`.
+COPY deploy/beatsync.patch /tmp/beatsync.patch
+RUN git apply -v /tmp/beatsync.patch
 WORKDIR /bs/apps/server
 RUN bun run build
 
