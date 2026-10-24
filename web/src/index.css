@@ -54,7 +54,10 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: calc(100% - 84px); /* 100% - SHEET_PEEK_PX */
+  /* 100% - SHEET_PEEK_PX + sheet border-radius: the extra 18px tucks the
+     canvas's bottom edge behind the sheet body so it can't peek through
+     the sheet's rounded top corners; bars grow up from under the sheet. */
+  height: calc(100% - 66px);
   width: 100%;
   pointer-events: none;
   opacity: 0.22;
