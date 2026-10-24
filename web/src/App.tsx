@@ -44,16 +44,16 @@ type Tint = [number, number, number] | null;
  * glyph. On successful load, samples the image's average colour so the
  * page background can tint to match (Spotify-style).
  */
-function Art({ filename, onTint }: { filename: string | null; onTint: (t: Tint) => void }) {
+function Art({ filename, src, onTint }: { filename: string | null; src?: string; onTint: (t: Tint) => void }) {
   const [idx, setIdx] = useState(0);
-  const candidates = artCandidates(filename);
+  const candidates = src ? [src] : artCandidates(filename);
   const attempts = useRef(0);
   useEffect(() => {
     setIdx(0);
     attempts.current = 0;
     onTint(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filename]);
+  }, [filename, src]);
 
   // The sidecar is written during upload — it may not exist when the track
   // first appears. If every candidate 404s, re-walk them a few times before
@@ -445,7 +445,8 @@ function Listener() {
         title,
         artist: artist ?? "",
         album: album ?? show.showName ?? "",
-        artwork: artCandidates(trackFile).map((src) => ({ src })),
+        artwork: (offAir ? ["/OffAir.png"] : artCandidates(trackFile))
+          .map((src) => ({ src })),
       });
       navigator.mediaSession.playbackState = s.isPlaying
         ? "playing"
@@ -453,7 +454,7 @@ function Listener() {
           ? "paused"
           : "none";
     } catch {}
-  }, [title, artist, album, show.showName, trackFile, s.isPlaying, listening]);
+  }, [title, artist, album, show.showName, trackFile, s.isPlaying, listening, offAir]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -493,7 +494,11 @@ function Listener() {
 
       {/* ── Album art ── */}
       <section className="np-art">
-        <Art filename={trackFile} onTint={setTint} />
+        <Art
+          filename={trackFile}
+          src={offAir ? "/OffAir.png" : undefined}
+          onTint={setTint}
+        />
       </section>
 
       {/* ── Track identity ── */}
