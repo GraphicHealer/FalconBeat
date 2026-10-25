@@ -22,7 +22,8 @@ same-origin, so there's no public-hostname setting).
   a fully static playlist — it cannot accept runtime uploads.
   Update flow: bump submodule SHA, re-copy `packages/shared` into
   `web/src/vendor/beatsync-shared/`, fix type breaks.
-- `ingest/` — zero-dep Node service. `PUT /media/<name>` (Bearer
+- `ingest/` — Node service with one runtime dep (jimp, for art
+  recompress). `PUT /media/<name>` (Bearer
   $FALCONBEAT_TOKEN) writes to `media/`; `DELETE /media/<name>` (Bearer)
   removes it — the plugin evicts played tracks off disk when it drops them
   from the room. Idempotent (missing file → 200). `PUT
@@ -86,7 +87,9 @@ BeatSync only ever stores the URL.
   re-renders and re-pushes on every settings change, defaulting name/tagline
   to FPP's HostName/HostDescription.
 - `media/<file>.art.jpg|png` — cover-art sidecars. Ingest extracts embedded
-  art on PUT (ID3v2 APIC/PIC, FLAC PICTURE) and deletes them on DELETE.
+  art on PUT (ID3v2 APIC/PIC, FLAC PICTURE), recompresses it to ≤800px
+  JPEG (PNG only when it has real alpha) so listeners get ~100KB not
+  multi-MB originals, and deletes them on DELETE.
   The listener page derives candidates from nowplaying.filename /
   trackUrl — must decodeURIComponent + apply the same sanitize as
   safeName (`[^\w.() \-']` → `_`).
@@ -197,7 +200,7 @@ npm run build && npm run typecheck
 cd beatsync && bun install
 cd apps/server && CREATOR_SECRET=... bun src/index.ts   # non-demo, no S3 needed
 
-# Ingest (zero-dep Node ≥22.18)
+# Ingest (Node ≥22.18; bun.lock is canonical — Dockerfile installs prod deps)
 cd ingest && MEDIA_DIR=../media INGEST_TOKEN=... node server.ts   # :8090
 
 # Bridge (zero-dep, Node ≥22.18 runs .ts directly)

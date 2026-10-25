@@ -166,7 +166,8 @@ polls it for track info, up-next, and off-air state (`updatedAtMs` stale
 ```
 beatsync/   upstream BeatSync server, pinned submodule @ 94c38ab (unmodified)
 web/        Vite + React listener page (vendored @beatsync/shared)
-ingest/     zero-dep file receiver → media/ (runs on Bun in the container)
+ingest/     file receiver → media/; recompresses embedded cover art to
+            ≤800px JPEG (runs on Bun in the container)
 bridge/     Node CLI admin client — protocol reference + manual test tool
 media/      audio store (volume-mounted; show audio is git-ignored)
 deploy/     Dockerfile, entrypoint.sh, Caddyfile, docker-compose.yml, env examples

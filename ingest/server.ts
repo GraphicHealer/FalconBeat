@@ -17,8 +17,9 @@
  * BeatSync stores the URL and broadcasts it — it never touches the bytes.
  *
  * Env: PORT=8090  MEDIA_DIR=./media  INGEST_TOKEN=...  WEB_DIST=/srv/falconbeat (opt)
- * Run: node server.ts   (Node ≥22.18, zero deps; also runs under Bun)
+ * Run: node server.ts   (Node ≥22.18; runtime dep: jimp — also runs under Bun)
  */
+import { Jimp } from "jimp";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile, readdir, stat, unlink } from "node:fs/promises";
 import { basename, extname, join, normalize, resolve, sep } from "node:path";
@@ -259,6 +260,34 @@ const extractTagData = (buf: Buffer): TagData => {
 /** Sidecar candidates for an audio file — written on PUT, removed on DELETE. */
 const artSidecars = (safe: string) => [`${safe}.art.jpg`, `${safe}.art.png`, `${safe}.tags.json`];
 
+// Embedded art ships full-resolution inside audio files (multi-MB is
+// common) and every listener downloads it per track — recompress to a
+// phone-sized image. PNG is kept only when the art actually has alpha.
+const ART_MAX_PX = 800;
+const ART_JPEG_QUALITY = 80;
+
+/** Downscale + recompress extracted cover art; keep the original on any
+ * decode failure or when recompression wouldn't save bytes. */
+const shrinkArt = async (
+  buf: Buffer,
+  ext: string,
+): Promise<{ data: Buffer; ext: string }> => {
+  try {
+    const img = await Jimp.read(buf);
+    if (img.width > ART_MAX_PX || img.height > ART_MAX_PX) {
+      img.scaleToFit({ w: ART_MAX_PX, h: ART_MAX_PX });
+    }
+    const alpha = img.hasAlpha();
+    const data = alpha
+      ? await img.getBuffer("image/png")
+      : await img.getBuffer("image/jpeg", { quality: ART_JPEG_QUALITY });
+    if (data.length >= buf.length) return { data: buf, ext };
+    return { data, ext: alpha ? ".png" : ".jpg" };
+  } catch {
+    return { data: buf, ext };
+  }
+};
+
 /** Strip to basename + safe charset; reject non-audio extensions. */
 const safeName = (raw: string): string | null => {
   const name = basename(decodeURIComponent(raw)).replace(/[^\w.() \-']/g, "_");
@@ -338,10 +367,15 @@ createServer(async (req, res) => {
       // displays (file metadata is authoritative over plugin-sent fields).
       // Clear stale sidecars first (a re-upload may carry different data).
       const meta = extractTagData(bytes);
+      const art = meta.art
+        ? await shrinkArt(meta.art.data, meta.art.ext)
+        : null;
       for (const side of artSidecars(safe)) {
-        if (meta.art && side === `${safe}.art${meta.art.ext}`) {
-          await writeFile(join(MEDIA_DIR, side), meta.art.data);
-          console.log(`  art → ${side} (${meta.art.data.length}B)`);
+        if (art && side === `${safe}.art${art.ext}`) {
+          await writeFile(join(MEDIA_DIR, side), art.data);
+          console.log(
+            `  art → ${side} (${meta.art!.data.length}B → ${art.data.length}B)`,
+          );
         } else if (meta.tags && side === `${safe}.tags.json`) {
           await writeFile(join(MEDIA_DIR, side), JSON.stringify(meta.tags));
           console.log(`  tags → ${side}`);

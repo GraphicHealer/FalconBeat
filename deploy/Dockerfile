@@ -56,6 +56,9 @@ COPY --from=beatsync-build /bs/apps/server/dist /app/beatsync/dist
 # with the bundled copy.
 COPY beatsync/LICENSE /app/beatsync/LICENSE-UPSTREAM
 COPY --from=web-build /web/dist /srv/falconbeat
+# Ingest has one runtime dep (jimp — art recompress); install just prod deps.
+COPY ingest/package.json ingest/bun.lock /app/ingest/
+RUN cd /app/ingest && bun install --frozen-lockfile --production
 COPY ingest/server.ts /app/ingest/server.ts
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY deploy/entrypoint.sh /entrypoint.sh
