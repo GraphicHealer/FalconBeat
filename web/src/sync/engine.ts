@@ -55,10 +55,14 @@ let userDelayMs = (() => {
 })();
 export const getUserDelayMs = (): number => userDelayMs;
 export const setUserDelayMs = (ms: number): void => {
+  const prev = userDelayMs;
   userDelayMs = Math.max(-USER_DELAY_LIMIT_MS, Math.min(USER_DELAY_LIMIT_MS, Math.round(ms)));
   try {
     localStorage.setItem(USER_DELAY_KEY, String(userDelayMs));
   } catch {}
+  // Re-anchor immediately so the adjustment is audible mid-track, not
+  // just on the next scheduled action.
+  if (userDelayMs !== prev) syncEngine.applyTimingShift((userDelayMs - prev) / 1000);
 };
 const MAX_MEASUREMENTS = NTP_CONSTANTS.MAX_MEASUREMENTS;
 const CONNECTION_TIMEOUT_MS = 5000;
@@ -618,6 +622,26 @@ export class SyncEngine {
     this.playbackOffset = offsetSec;
     this.trackDuration = source.buffer.duration;
     this.emit();
+  }
+
+  /**
+   * Re-anchor live playback after a timing-shift change. +deltaSec
+   * delays (the new offset seeks back), −deltaSec advances. A pending
+   * pre-scheduled node slides its start instant instead of seeking.
+   */
+  applyTimingShift(deltaSec: number): void {
+    if (!this.isPlaying || !this.currentSource || !this.currentUrl) return;
+    const now = audioEngine.getCurrentTime();
+    if (this.playbackStartCtxTime > now) {
+      this.startPlayback(
+        this.currentUrl,
+        this.playbackOffset,
+        Math.max(0, this.playbackStartCtxTime - now + deltaSec),
+      );
+      return;
+    }
+    const pos = this.playbackOffset + (now - this.playbackStartCtxTime);
+    this.startPlayback(this.currentUrl, Math.max(0, pos - deltaSec), 0);
   }
 
   private schedulePause(targetServerTime: number): void {
