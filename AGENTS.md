@@ -56,7 +56,9 @@ same-origin, so there's no public-hostname setting).
   writes (`PUT/DELETE /media/*`, `PUT /config/*`, `OPTIONS`) proxy to
   ingest which enforces the Bearer itself.
   `{$BEATSYNC_UPSTREAM}`/`{$INGEST_UPSTREAM}` also work split across
-  containers.
+  containers. The site address is `{$FB_SITE::80}` — set FB_SITE to a
+  public domain and publish 443+80 for auto-HTTPS (safe publicly: all
+  admin surfaces are token-gated).
   One shared secret: `FALCONBEAT_TOKEN` in .env feeds ingest Bearer,
   BeatSync admin auth (Bearer on the WS upgrade, or `?creator=`), and the
   Caddy admin-route gate. Legacy `INGEST_TOKEN`/`CREATOR_SECRET` still work

@@ -40,6 +40,26 @@ export interface EngineState {
 
 // Room matches the plugin's Room ID setting (default 000000); override with ?room=
 const ROOM_ID = new URLSearchParams(location.search).get("room") ?? "000000";
+
+// Per-device playback shift the listener dials in for gear whose output
+// latency the OS won't report (Bluetooth commonly reports garbage — the
+// filtered outputLatency covers wired only). +ms plays later, −ms earlier.
+const USER_DELAY_KEY = "falconbeat.timingOffsetMs";
+const USER_DELAY_LIMIT_MS = 1000;
+let userDelayMs = (() => {
+  try {
+    return Number(localStorage.getItem(USER_DELAY_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+})();
+export const getUserDelayMs = (): number => userDelayMs;
+export const setUserDelayMs = (ms: number): void => {
+  userDelayMs = Math.max(-USER_DELAY_LIMIT_MS, Math.min(USER_DELAY_LIMIT_MS, Math.round(ms)));
+  try {
+    localStorage.setItem(USER_DELAY_KEY, String(userDelayMs));
+  } catch {}
+};
 const MAX_MEASUREMENTS = NTP_CONSTANTS.MAX_MEASUREMENTS;
 const CONNECTION_TIMEOUT_MS = 5000;
 const MAX_RECONNECT_ATTEMPTS = 15;
@@ -504,10 +524,10 @@ export class SyncEngine {
 
   // ── Scheduled playback ───────────────────────────────────────────
 
-  /** ms until a server timestamp fires, minus local output latency */
+  /** ms until a server timestamp fires, minus output latency + user shift */
   private waitSeconds(targetServerTime: number): number {
     const waitMs = calculateWaitTimeMilliseconds(targetServerTime, this.offsetEstimate);
-    return Math.max(0, waitMs - audioEngine.getFilteredOutputLatencyMs()) / 1000;
+    return Math.max(0, waitMs - audioEngine.getFilteredOutputLatencyMs() + userDelayMs) / 1000;
   }
 
   private schedulePlay(data: {

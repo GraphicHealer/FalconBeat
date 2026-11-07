@@ -90,13 +90,29 @@ ingress:
 Or run cloudflared as a sidecar container — a commented-out service is in
 `deploy/docker-compose.yml` (set `CLOUDFLARED_TOKEN` in `.env`).
 
+### Public hosting / remote FPP
+
+Every admin surface on the edge port is token-gated (`/upload/complete`,
+`/discover`, ingest `PUT/DELETE`), so the port is safe to expose publicly —
+the server can live on a VPS, or an FPP on another network can point its
+plugin **Server** at the public URL. For HTTPS either keep the container
+behind any TLS-terminating proxy (cloudflared, nginx — nothing
+FalconBeat-specific to configure), or let Caddy provision certs itself:
+
+```env
+FB_SITE=falconbeat.example.com   # publish 443:443 and 80:80
+```
+
+`FB_SITE` defaults to `:80` (plain HTTP on all interfaces). With a domain
+set, Caddy gets a certificate automatically and redirects HTTP→HTTPS.
+
 ## Plugin settings (FPP → Input/Output Setup → FalconBeat)
 
 **Connection:**
 
 | Plugin field | Value |
 |---|---|
-| Server (LAN) | `http://<docker-host>:8000` — the one published port; the plugin derives the WebSocket address from it |
+| Server (LAN) | `http://<docker-host>:8000` — the one published port; the plugin derives the WebSocket address from it. A remote/public deployment works too (`https://falconbeat.example.com`) |
 | Server Token | `FALCONBEAT_TOKEN` from `deploy/.env` — the single shared secret |
 
 **Show Info** — what visitors see (pushed to the server on every change):

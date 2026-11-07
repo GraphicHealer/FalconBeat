@@ -64,8 +64,9 @@ COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && mkdir -p /media
 
-# 80 = public web (cloudflared target); 8080 = LAN admin WS/API; 8090 = LAN ingest
-EXPOSE 80 8080 8090
+# 80 = public web (cloudflared target); 443 = auto-HTTPS when FB_SITE is a
+# domain; 8080/8090 = LAN-only internals (never publish these)
+EXPOSE 80 443 8080 8090
 ENV NODE_ENV=production \
     MEDIA_DIR=/media \
     PORT=8090 \

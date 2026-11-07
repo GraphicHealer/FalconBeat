@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent, type ReactNode } from "react";
-import { syncEngine, type EngineState } from "./sync/engine";
+import { getUserDelayMs, setUserDelayMs, syncEngine, type EngineState } from "./sync/engine";
 import { audioEngine } from "./sync/audio";
 import {
   artCandidates,
@@ -163,6 +163,97 @@ function PauseIcon() {
   );
 }
 
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+const TIMING_STEP_MS = 25;
+// Bluetooth sinks add codec+A2DP latency the OS won't report, so the audio
+// lands late vs the lights — presets advance playback (−ms) to compensate.
+const TIMING_PRESETS: { label: string; ms: number }[] = [
+  { label: "Wired / Built-in", ms: 0 },
+  { label: "BT Speaker", ms: -150 },
+  { label: "BT Headphones", ms: -200 },
+  { label: "Car Stereo", ms: -250 },
+];
+
+/**
+ * Per-device playback timing dialog. The shared clock assumes zero output
+ * latency beyond the filtered outputLatency; this lets a listener shift
+ * their own audio ±ms when it doesn't line up with the lights.
+ */
+function TimingDialog({ onClose }: { onClose: () => void }) {
+  const [ms, setMs] = useState(getUserDelayMs());
+  const apply = (v: number) => {
+    setUserDelayMs(v);
+    setMs(getUserDelayMs());
+  };
+  return (
+    <div className="dlg-backdrop" onClick={onClose}>
+      <div
+        className="dlg"
+        role="dialog"
+        aria-label="Playback timing"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="dlg-title">Playback timing</h2>
+        <p className="dlg-sub">
+          Sound out of step with the lights? Tap a side until it matches.
+        </p>
+        <div className="dlg-adj">
+          <button className="dlg-adj-btn" onClick={() => apply(ms - TIMING_STEP_MS)}>
+            <strong>Sounds late</strong>
+            <span>play it earlier</span>
+          </button>
+          <button className="dlg-adj-btn dlg-reset" onClick={() => apply(0)}>
+            Reset
+          </button>
+          <button className="dlg-adj-btn" onClick={() => apply(ms + TIMING_STEP_MS)}>
+            <strong>Sounds early</strong>
+            <span>play it later</span>
+          </button>
+        </div>
+        <div className="dlg-slider-row">
+          <span className="dlg-slider-end">− earlier</span>
+          <input
+            type="range"
+            min={-500}
+            max={500}
+            step={TIMING_STEP_MS}
+            value={ms}
+            onChange={(e) => apply(Number(e.target.value))}
+            aria-label="Playback offset in milliseconds"
+          />
+          <span className="dlg-slider-end">later +</span>
+        </div>
+        <p className="dlg-value">
+          {ms === 0 ? "On time" : `${Math.abs(ms)} ms ${ms > 0 ? "later" : "earlier"}`}
+        </p>
+        <div className="dlg-presets">
+          {TIMING_PRESETS.map((p) => (
+            <button
+              key={p.label}
+              className={`dlg-preset${ms === p.ms ? " on" : ""}`}
+              title={`${p.ms} ms`}
+              onClick={() => apply(p.ms)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <button className="dlg-done" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ShareIcon() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -228,6 +319,7 @@ function Listener() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const sheetBodyRef = useRef<HTMLDivElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [timingOpen, setTimingOpen] = useState(false);
   const [dragY, setDragY] = useState<number | null>(null);
   const drag = useRef({ y0: 0, open0: false, moved: false });
 
@@ -490,6 +582,14 @@ function Listener() {
           <h1 className="np-top-name">{show.showName}</h1>
           <span className="np-top-sub">{show.tagline || "Listening live"}</span>
         </div>
+        <button
+          className="np-gear"
+          aria-label="Playback timing"
+          title="Playback timing"
+          onClick={() => setTimingOpen(true)}
+        >
+          <GearIcon />
+        </button>
       </header>
 
       {/* ── Album art ── */}
@@ -625,6 +725,8 @@ function Listener() {
           </div>
         </div>
       </div>
+
+      {timingOpen && <TimingDialog onClose={() => setTimingOpen(false)} />}
     </main>
   );
 }

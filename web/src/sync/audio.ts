@@ -18,7 +18,7 @@ const SILENCE_DATA_URL =
 const makeToneWavUrl = (): string => {
   const seconds = 10;
   const freq = 15;
-  const amp = 0.3;
+  const amp = 0.15;
   const rate = 8000;
   const n = seconds * rate;
   const buf = new ArrayBuffer(44 + n * 2);
@@ -224,13 +224,16 @@ class AudioEngine {
     // element also has to be playing audible media of a few seconds' duration
     // — a silent/empty stream keeps the widget hidden. This is a real WAV
     // file: a 15Hz subsonic tone, 10s, looped. Real audio energy satisfies
-    // the audibility + duration checks; nothing reaches the ear or speaker.
+    // the audibility + duration checks, and the low element volume keeps it
+    // out of the ear — an unattenuated infrasonic tone makes small amps
+    // motorboat (audible buzzing) and hammers subwoofers.
     // All audible output stays on the synced ctx.destination path.
     const el = document.createElement("audio");
     el.src = makeToneWavUrl();
     el.loop = true;
     el.preload = "auto";
     el.disableRemotePlayback = true;
+    el.volume = 0.1;
     this.mediaElement = el;
 
     // Bluetooth keepalive: -80dB 1Hz signal keeps the A2DP buffer from

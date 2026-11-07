@@ -8,8 +8,15 @@
 #
 # The listener page resolves ws(s)://{host}/ws same-origin. Audio URLs are
 # registered relative (/media/...) so devices fetch them same-origin too.
+#
+# Every admin surface is already token-gated, so the port is safe to expose
+# publicly: host it on a VPS or point a remote FPP's serverAddr at it. For
+# HTTPS, either put it behind any TLS-terminating proxy (cloudflared,
+# nginx — it needs no special config beyond forwarding), or set FB_SITE to
+# a public domain and publish 443+80 — Caddy then provisions a cert
+# automatically and redirects HTTP→HTTPS.
 
-:80 {
+{$FB_SITE::80} {
 	encode gzip
 
 	# BeatSync WebSocket (reverse_proxy handles the Upgrade). Admin and
