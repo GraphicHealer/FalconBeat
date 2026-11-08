@@ -18,7 +18,7 @@ const SILENCE_DATA_URL =
 const makeToneWavUrl = (): string => {
   const seconds = 10;
   const freq = 15;
-  const amp = 0.15;
+  const amp = 0.05;
   const rate = 8000;
   const n = seconds * rate;
   const buf = new ArrayBuffer(44 + n * 2);
@@ -185,6 +185,22 @@ class AudioEngine {
     this.mediaElement?.pause();
   }
 
+  /**
+   * The hidden tone element exists only where mediaSession action
+   * handlers are unavailable (Firefox) — everywhere else the real
+   * controls surface via mediaSession and the element is dead weight.
+   * Skipping it also kills an audio path some platforms can't quiet
+   * (iOS ignores element.volume → audible infrasonic buzz).
+   */
+  private needsMediaElement(): boolean {
+    try {
+      return !("mediaSession" in navigator) ||
+        typeof navigator.mediaSession.setActionHandler !== "function";
+    } catch {
+      return false;
+    }
+  }
+
   createBufferSource(): AudioBufferSourceNode {
     return this.getContext().createBufferSource();
   }
@@ -218,16 +234,15 @@ class AudioEngine {
     this.analyser.maxDecibels = -10;
     this.masterGain.connect(this.analyser);
 
-    // Browsers only surface OS-level media controls (Android shade/lockscreen,
-    // Firefox's media notification — it doesn't implement navigator.mediaSession)
-    // for a real media element; WebAudio alone is invisible to them. The
-    // element also has to be playing audible media of a few seconds' duration
-    // — a silent/empty stream keeps the widget hidden. This is a real WAV
-    // file: a 15Hz subsonic tone, 10s, looped. Real audio energy satisfies
-    // the audibility + duration checks, and the low element volume keeps it
-    // out of the ear — an unattenuated infrasonic tone makes small amps
-    // motorboat (audible buzzing) and hammers subwoofers.
+    // Browsers without navigator.mediaSession action handlers (Firefox)
+    // only surface OS-level media controls for a real media element;
+    // WebAudio alone is invisible to them. The element has to be playing
+    // audible media of a few seconds' duration — a silent/empty stream
+    // keeps the widget hidden. This is a real WAV file: a 15Hz subsonic
+    // tone, 10s, looped — kept barely audible because some platforms
+    // (iOS Safari) ignore element.volume entirely.
     // All audible output stays on the synced ctx.destination path.
+    if (!this.needsMediaElement()) return;
     const el = document.createElement("audio");
     el.src = makeToneWavUrl();
     el.loop = true;
